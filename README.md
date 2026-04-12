@@ -38,7 +38,7 @@ realtalk display.debug=true       # show LLM prompt structure
 realtalk contributor.enabled=true # opt-in to RLHF data collection
 ```
 
-Config flags use dotted paths into the config hierarchy. See `docs/prd/0.1.md` for
+Config flags use dotted paths into the config hierarchy. See `docs/prd/1.0.md` for
 full game rules and `docs/spec/` for technical design.
 
 ---
@@ -108,7 +108,7 @@ realtalk contributor.enabled=true
 ```
 
 Session data is stored locally at `~/.realtalk/sessions/`. Nothing is transmitted
-in v0.1 — the data stays on your machine until an upload mechanism is added.
+in v1.0 — the data stays on your machine until an upload mechanism is added.
 
 ---
 
@@ -118,7 +118,7 @@ Built in layers — each layer depends only on the layer below it.
 
 | Spec | Layer | File | Status |
 |------|-------|------|--------|
-| v0.1 | 0 | `realtalk/session.py` | Done — event-sourced session model + JSONL serialization (71 tests) |
+| v1.0 | 0 | `realtalk/session.py` | Done — event-sourced session model + JSONL serialization (71 tests) |
 | v0.2 | 1 | `realtalk/storage.py` | Skeleton — disk persistence + log rotation |
 | v0.2 | 2 | `realtalk/config.py` | Skeleton — layered config via `chz` + pydantic |
 | v0.3 | 3 | `realtalk/api.py` | Skeleton — streaming Anthropic client |
@@ -133,6 +133,6 @@ See `docs/spec/` for detailed specs and acceptance criteria per layer.
 
 ## Docs
 
-- [`docs/prd/0.1.md`](docs/prd/0.1.md) — Product requirements document
-- [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — Build spec: session data types (Layer 0)
+- [`docs/prd/1.0.md`](docs/prd/1.0.md) — Product requirements document
+- [`docs/spec/v1.0.md`](docs/spec/v1.0.md) — Build spec: session data types (Layer 0)
 - [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — Build spec: storage + configuration (Layers 1–2)
