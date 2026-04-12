@@ -116,23 +116,23 @@ in v0.1 — the data stays on your machine until an upload mechanism is added.
 
 Built in layers — each layer depends only on the layer below it.
 
-| Layer | File | Status |
-|-------|------|--------|
-| 0 | `realtalk/session.py` | Done — event-sourced session model + JSONL serialization |
-| 1 | `realtalk/storage.py` | In progress — disk persistence + log rotation |
-| 2 | `realtalk/config.py` | In progress — layered config via `chz` + pydantic |
-| 3 | `realtalk/api.py` | Planned — streaming Anthropic client |
-| 4 | `realtalk/conversation.py` | Planned — game loop engine |
-| 5 | `realtalk/game.py` | Planned — scene, role, turn mechanics |
-| 6 | `realtalk/tui.py` | Planned — Textual terminal UI |
-| 7 | `realtalk/cli.py` | Planned — entry point |
+| Spec | Layer | File | Status |
+|------|-------|------|--------|
+| v0.1 | 0 | `realtalk/session.py` | Done — event-sourced session model + JSONL serialization (71 tests) |
+| v0.2 | 1 | `realtalk/storage.py` | Skeleton — disk persistence + log rotation |
+| v0.2 | 2 | `realtalk/config.py` | Skeleton — layered config via `chz` + pydantic |
+| v0.3 | 3 | `realtalk/api.py` | Skeleton — streaming Anthropic client |
+| v0.3 | 4 | `realtalk/conversation.py` | Planned — game loop engine |
+| v0.4 | 5 | `realtalk/game.py` | Planned — scene, role, turn mechanics |
+| v0.5 | 6 | `realtalk/tui.py` | Planned — terminal UI |
+| v0.6 | 7 | `realtalk/cli.py` | Skeleton — entry point via `chz.nested_entrypoint` |
 
-See `docs/spec/` for detailed specs per layer.
+See `docs/spec/` for detailed specs and acceptance criteria per layer.
 
 ---
 
 ## Docs
 
 - [`docs/prd/0.1.md`](docs/prd/0.1.md) — Product requirements document
-- [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — Build spec: session data types
-- [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — Build spec: storage + configuration layer
+- [`docs/spec/v0.1.md`](docs/spec/v0.1.md) — Build spec: session data types (Layer 0)
+- [`docs/spec/v0.2.md`](docs/spec/v0.2.md) — Build spec: storage + configuration (Layers 1–2)
