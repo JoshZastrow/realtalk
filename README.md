@@ -40,15 +40,8 @@ realtalk
 ### With options
 
 ```bash
-# Display and logging
 realtalk display.no_color=true       # no color output (accessibility)
 realtalk display.debug=true          # show LLM prompt structure for debugging
-
-# LLM tuning
-realtalk game.temperature=0.7        # lower = more deterministic (default 1.0)
-realtalk game.max_tokens=4096        # max output length (default 8096)
-
-# Data and providers
 realtalk contributor.enabled=true    # opt-in to RLHF data collection
 realtalk game.model=gpt-4            # use OpenAI GPT-4 instead of Claude
 realtalk game.model=ollama/llama2    # use local Ollama model
@@ -95,6 +88,12 @@ pytest tests/test_session.py
 # Run with verbose output
 pytest -v
 
+# To run including integration tests to make real API calls, add to .env:
+PYTEST_INTEGRATION=1
+LITELLM_DEBUG=1
+# and un- SKIP tests in test_api_integration.py
+
+
 # Run with coverage
 pytest --cov=realtalk --cov-report=term-missing
 
@@ -107,8 +106,9 @@ Tests cover:
 - **Layer 1 (storage.py):** Disk persistence, rotation, archival — 16 tests
 - **Layer 2 (config.py):** Layered configuration — 14 tests
 - **Layer 3 (api.py):** LLM provider integration — 23 tests
-- **Layer 5 (tools):** Permissions, hooks, game tools, registry — 38 tests
-- **Total:** 174 tests
+- **Layer 4 (conversation.py):** Conversation runtime and turn loop — 17 tests
+- **Layer 5 (hooks.py):** Pre/post tool hook runner — 27 tests
+- **Total:** 178 tests
 
 ### Type check
 
@@ -215,13 +215,14 @@ Built in layers — each layer depends only on the layer below it.
 | v1.0 | 0 | `realtalk/session.py` | ✓ Done — event-sourced model + JSONL serialization (71 tests) |
 | v1.1 | 1 | `realtalk/storage.py` | ✓ Done — disk persistence, rotation, archival (16 tests) |
 | v1.1 | 2 | `realtalk/config.py` | ✓ Done — layered config via `chz` + pydantic (14 tests) |
-| v1.3 | 3 | `realtalk/api.py` | ✓ Done — multi-provider LLM via litellm.ai (23 tests) |
-| v1.4 | 4 | `realtalk/conversation.py` | Specced — game loop engine |
-| v1.6 | 5 | `realtalk/permissions.py`, `hooks.py`, `game_tools.py`, `tools.py` | ✓ Done — tool system + game mechanics (38 tests) |
-| — | 6 | `realtalk/prompt.py`, `compact.py` | Planned — system prompt + compaction |
-| — | 8 | `realtalk/cli.py` | Skeleton — entry point via `chz.nested_entrypoint` |
+| v1.3 | 3 | `realtalk/api.py` | ✓ Done — multi-provider LLM via litellm.ai (26 tests) |
+| v1.4 | 4 | `realtalk/conversation.py` | ✓ Done — conversation runtime, turn loop, tool execution (17 tests) |
+| v1.5 | 5 | `realtalk/hooks.py` | ✓ Done — pre/post tool hook runner (27 tests) |
+| — | 5 | `realtalk/tools.py` | Planned — tool registry, game tool handlers |
+| v0.6 | 6 | `realtalk/tui.py` | Planned — terminal UI |
+| v0.7 | 7 | `realtalk/cli.py` | Skeleton — entry point via `chz.nested_entrypoint` |
 
-**Current status:** Layers 0–3 and 5 complete (event sourcing, persistence, config, LLM, tools).
+**Current status:** Layers 0–5 complete (event sourcing, persistence, config, multi-provider LLM, conversation runtime, hook runner).
 
 See `docs/spec/` for detailed specs and acceptance criteria per layer.
 
@@ -234,5 +235,5 @@ See `docs/spec/` for detailed specs and acceptance criteria per layer.
 - [`docs/spec/v1.1.md`](docs/spec/v1.1.md) — Build spec: storage + configuration (Layers 1–2)
 - [`docs/spec/v1.3.md`](docs/spec/v1.3.md) — Build spec: multi-provider LLM integration (Layer 3)
 - [`docs/spec/v1.4.md`](docs/spec/v1.4.md) — Build spec: conversation runtime (Layer 4)
-- [`docs/spec/v1.6.md`](docs/spec/v1.6.md) — Build spec: tool system + game mechanics (Layer 5)
+- [`docs/spec/v1.5.md`](docs/spec/v1.5.md) — Build spec: hook runner (Layer 5)
 - [`docs/design/v1.2-design.md`](docs/design/v1.2-design.md) — Engineering review findings

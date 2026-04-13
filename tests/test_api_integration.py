@@ -8,6 +8,7 @@ Environment variables:
 - ANTHROPIC_API_KEY: required for Anthropic tests
 - OPENAI_API_KEY: optional for OpenAI tests
 - PYTEST_INTEGRATION: set to '1' to enable integration tests (opt-in)
+- LITELLM_DEBUG: set to 'true' to enable litellm debug logging
 """
 
 from __future__ import annotations
@@ -16,7 +17,12 @@ import os
 
 import pytest
 
-from realtalk.api import ApiRequest, LiteLLMClient, MessageStop, TextDelta
+from realtalk.api import ApiRequest, LiteLLMClient, MessageStop, TextDelta, UsageEvent
+
+# Enable litellm debug if requested
+if os.getenv("LITELLM_DEBUG", "").lower() in ("true", "1"):
+    import litellm
+    litellm._turn_on_debug()
 
 # Skip all tests in this file unless PYTEST_INTEGRATION=1
 pytestmark = pytest.mark.skipif(
@@ -35,8 +41,10 @@ def test_anthropic_real_call():
     if not api_key:
         pytest.skip("ANTHROPIC_API_KEY not set")
 
+    # Use Anthropic model name (litellm auto-detects provider from model prefix)
+    model_name = "claude-opus-4-6"
     client = LiteLLMClient(
-        model="claude-3-5-sonnet-20241022",
+        model=model_name,
         temperature=0.5,
         max_tokens=100,
         api_key=api_key,
@@ -46,13 +54,26 @@ def test_anthropic_real_call():
         system_prompt=["You are a helpful assistant."],
         messages=[{"role": "user", "content": "Say 'hello world' and stop."}],
         tools=[],
-        model="claude-3-5-sonnet-20241022",
+        model=model_name,
     )
 
     # Collect events
-    events = list(client.stream(request))
+    try:
+        events = list(client.stream(request))
+    except RuntimeError as e:
+        if "Authentication failed" in str(e):
+            pytest.skip(f"Anthropic API authentication failed: {e}")
+        elif "not found or not supported" in str(e):
+            pytest.skip(f"Model not available: {e}")
+        raise
 
     # Verify we got events
+    if not events:
+        pytest.fail(
+            f"Expected at least one event from {model_name}. "
+            "Check API key, quota, and model availability. "
+            "Run with LITELLM_DEBUG=1 for more info."
+        )
     assert len(events) > 0, "Expected at least one event"
 
     # Verify we got text and a stop event
@@ -64,6 +85,14 @@ def test_anthropic_real_call():
     # Verify response contains expected words
     full_text = "".join(e.text for e in events if isinstance(e, TextDelta))
     assert "hello" in full_text.lower(), f"Expected 'hello' in response: {full_text}"
+
+    # Verify token usage is reported (Phase 5: token accuracy)
+    # Note: Some streaming providers don't include usage in streamed events
+    usage_events = [e for e in events if isinstance(e, UsageEvent)]
+    if usage_events:
+        usage = usage_events[0]
+        assert usage.input_tokens > 0, "Expected input_tokens > 0"
+        assert usage.output_tokens > 0, "Expected output_tokens > 0"
 
 
 def test_openai_real_call():
@@ -76,8 +105,10 @@ def test_openai_real_call():
     if not api_key:
         pytest.skip("OPENAI_API_KEY not set")
 
+    # Use OpenAI model name (litellm auto-detects provider from model prefix)
+    model_name = "gpt-4o"
     client = LiteLLMClient(
-        model="gpt-4-turbo",
+        model=model_name,
         temperature=0.5,
         max_tokens=100,
         api_key=api_key,
@@ -87,11 +118,21 @@ def test_openai_real_call():
         system_prompt=["You are a helpful assistant."],
         messages=[{"role": "user", "content": "Say 'hello world' and stop."}],
         tools=[],
-        model="gpt-4-turbo",
+        model=model_name,
     )
 
     # Collect events
-    events = list(client.stream(request))
+    try:
+        events = list(client.stream(request))
+    except RuntimeError as e:
+        error_str = str(e)
+        if "Authentication failed" in error_str:
+            pytest.skip(f"OpenAI API authentication failed: {e}")
+        elif "not found or not supported" in error_str:
+            pytest.skip(f"Model not available: {e}")
+        elif "RateLimitError" in error_str or "Rate limit" in error_str:
+            pytest.skip(f"OpenAI API rate limited: {e}")
+        raise
 
     # Verify we got events
     assert len(events) > 0, "Expected at least one event"
@@ -105,6 +146,14 @@ def test_openai_real_call():
     # Verify response contains expected words
     full_text = "".join(e.text for e in events if isinstance(e, TextDelta))
     assert "hello" in full_text.lower(), f"Expected 'hello' in response: {full_text}"
+
+    # Verify token usage is reported (Phase 5: token accuracy)
+    # Note: Some streaming providers don't include usage in streamed events
+    usage_events = [e for e in events if isinstance(e, UsageEvent)]
+    if usage_events:
+        usage = usage_events[0]
+        assert usage.input_tokens > 0, "Expected input_tokens > 0"
+        assert usage.output_tokens > 0, "Expected output_tokens > 0"
 
 
 def test_streaming_accumulation():

@@ -70,8 +70,9 @@ class ApiRequest:
     system_prompt: list[str]
     messages: list[dict[str, object]]  # Anthropic message dicts
     tools: list[dict[str, object]]     # Anthropic tool definition dicts
-    model: str = "claude-opus-4-6"
+    model: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 8096
+    temperature: float = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,50 @@ class MockClient:
 
     def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:  # noqa: ARG002
         yield from self._events
+
+
+# ---------------------------------------------------------------------------
+# ScriptedClient — multi-turn test double
+# ---------------------------------------------------------------------------
+
+
+class ScriptedClient:
+    """Serves different event sequences on successive stream() calls.
+
+    Each stream() call pops the next sequence. Raises IndexError if called
+    more times than there are sequences. Records each ApiRequest for assertions.
+
+    >>> client = ScriptedClient([
+    ...     [TextDelta("hi"), MessageStop()],
+    ...     [TextDelta("bye"), MessageStop()],
+    ... ])
+    >>> list(client.stream(ApiRequest(system_prompt=[], messages=[], tools=[])))
+    [TextDelta(text='hi'), MessageStop(stop_reason='end_turn')]
+    >>> list(client.stream(ApiRequest(system_prompt=[], messages=[], tools=[])))
+    [TextDelta(text='bye'), MessageStop(stop_reason='end_turn')]
+    >>> client.call_count
+    2
+    """
+
+    def __init__(self, sequences: list[list[AssistantEvent]]) -> None:
+        self._sequences = list(sequences)
+        self._index = 0
+        self.requests: list[ApiRequest] = []
+
+    @property
+    def call_count(self) -> int:
+        return self._index
+
+    def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:
+        if self._index >= len(self._sequences):
+            raise IndexError(
+                f"ScriptedClient exhausted: {self._index} calls made, "
+                f"only {len(self._sequences)} sequences provided"
+            )
+        self.requests.append(request)
+        events = self._sequences[self._index]
+        self._index += 1
+        yield from events
 
 
 # ---------------------------------------------------------------------------
@@ -197,44 +242,55 @@ class LiteLLMClient:
             tool_name = ""
 
             for event in response:
-                if isinstance(event, dict):
-                    # Handle usage information
-                    if "usage" in event:
-                        usage = event["usage"]
-                        yield UsageEvent(
-                            input_tokens=usage.get("prompt_tokens", 0),
-                            output_tokens=usage.get("completion_tokens", 0),
-                            cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
-                            cache_read_tokens=usage.get("cache_read_input_tokens", 0),
-                        )
+                # Handle both dict and object events (litellm returns OpenAI-compatible objects)
+                # Try dict access first, fall back to attribute access
+                def get_attr(obj, key, default=None):
+                    if isinstance(obj, dict):
+                        return obj.get(key, default)
+                    return getattr(obj, key, default)
 
-                    # Handle choice deltas (streaming content)
-                    if "choices" in event:
-                        for choice in event["choices"]:
-                            if choice.get("finish_reason"):
-                                # Message completed
-                                if choice["finish_reason"] == "tool_calls":
-                                    # Tool use already yielded
-                                    pass
-                                yield MessageStop(stop_reason=choice["finish_reason"])
-                            else:
-                                delta = choice.get("delta", {})
+                # Process usage events
+                usage = get_attr(event, "usage")
+                if usage:
+                    yield UsageEvent(
+                        input_tokens=get_attr(usage, "prompt_tokens", 0),
+                        output_tokens=get_attr(usage, "completion_tokens", 0),
+                        cache_creation_tokens=get_attr(usage, "cache_creation_input_tokens", 0),
+                        cache_read_tokens=get_attr(usage, "cache_read_input_tokens", 0),
+                    )
 
+                # Process choice deltas
+                choices = get_attr(event, "choices", [])
+                if choices:
+                    for choice in choices:
+                        finish_reason = get_attr(choice, "finish_reason")
+                        if finish_reason:
+                            # Message completed
+                            if finish_reason != "tool_calls":
+                                yield MessageStop(stop_reason=finish_reason)
+                        else:
+                            delta = get_attr(choice, "delta")
+                            if delta:
                                 # Text content
-                                if "content" in delta and delta["content"]:
-                                    yield TextDelta(text=delta["content"])
+                                content = get_attr(delta, "content")
+                                if content:
+                                    yield TextDelta(text=content)
 
                                 # Tool use (accumulate input JSON across chunks)
-                                if "tool_calls" in delta:
-                                    for tool_call in delta["tool_calls"]:
-                                        if "id" in tool_call:
-                                            tool_id = tool_call["id"]
-                                        if "function" in tool_call:
-                                            if "name" in tool_call["function"]:
-                                                tool_name = tool_call["function"]["name"]
-                                            if "arguments" in tool_call["function"]:
-                                                args = tool_call["function"]["arguments"]
-                                                tool_input_buffer += args
+                                tool_calls = get_attr(delta, "tool_calls", [])
+                                if tool_calls:
+                                    for tool_call in tool_calls:
+                                        call_id = get_attr(tool_call, "id")
+                                        if call_id:
+                                            tool_id = call_id
+                                        func = get_attr(tool_call, "function")
+                                        if func:
+                                            func_name = get_attr(func, "name")
+                                            if func_name:
+                                                tool_name = func_name
+                                            func_args = get_attr(func, "arguments")
+                                            if func_args:
+                                                tool_input_buffer += func_args
                                         # When we have all parts, yield the tool use
                                         if tool_id and tool_name and tool_input_buffer:
                                             try:
