@@ -25,7 +25,6 @@ from realtalk.session import (
     MessageAdded,
     MessageRole,
     Session,
-    SessionEvent,
     ToolCallRecorded,
     ToolResultRecorded,
     TurnStatus,
@@ -36,7 +35,6 @@ from realtalk.session import (
     record_tool_result,
     start_turn,
 )
-
 
 # ---------------------------------------------------------------------------
 # Protocols
@@ -282,92 +280,99 @@ class ConversationRuntime:
         iterations = 0
         hit_limit = False
 
-        # 3. Inner loop
-        while iterations < self._max_iterations:
-            iterations += 1
+        # 3. Inner loop — always ends_turn via finally so the session is never left open.
+        try:
+            while iterations < self._max_iterations:
+                iterations += 1
 
-            # 3a. Format messages
-            api_messages = format_session_for_api(self._session)
+                # 3a. Format messages
+                api_messages = format_session_for_api(self._session)
 
-            # 3b. Build request
-            request = ApiRequest(
-                system_prompt=self._system_prompt,
-                messages=api_messages,
-                tools=self._tool_definitions,
-                model=self._model,
-                max_tokens=self._max_tokens,
-                temperature=self._temperature,
-            )
+                # 3b. Build request
+                request = ApiRequest(
+                    system_prompt=self._system_prompt,
+                    messages=api_messages,
+                    tools=self._tool_definitions,
+                    model=self._model,
+                    max_tokens=self._max_tokens,
+                    temperature=self._temperature,
+                )
 
-            # 3c. Stream response
-            text_buffer: list[str] = []
-            pending_tool_uses: list[ToolUse] = []
+                # 3c. Stream response
+                text_buffer: list[str] = []
+                pending_tool_uses: list[ToolUse] = []
 
-            for event in self._api_client.stream(request):
-                if isinstance(event, TextDelta):
-                    text_buffer.append(event.text)
-                    self._on_text(event.text)
-                elif isinstance(event, ToolUse):
-                    pending_tool_uses.append(event)
-                elif isinstance(event, UsageEvent):
-                    total_input_tokens += event.input_tokens
-                    total_output_tokens += event.output_tokens
-                    total_cache_creation += event.cache_creation_tokens
-                    total_cache_read += event.cache_read_tokens
-                elif isinstance(event, MessageStop):
+                for event in self._api_client.stream(request):
+                    if isinstance(event, TextDelta):
+                        text_buffer.append(event.text)
+                        self._on_text(event.text)
+                    elif isinstance(event, ToolUse):
+                        pending_tool_uses.append(event)
+                    elif isinstance(event, UsageEvent):
+                        total_input_tokens += event.input_tokens
+                        total_output_tokens += event.output_tokens
+                        total_cache_creation += event.cache_creation_tokens
+                        total_cache_read += event.cache_read_tokens
+                    elif isinstance(event, MessageStop):
+                        break
+
+                # 3d. Record assistant message (always, even if empty text)
+                accumulated_text = "".join(text_buffer)
+                self._session, _ = add_assistant_text(
+                    self._session, turn_id, accumulated_text
+                )
+
+                # Record tool calls
+                call_ids: list[str] = []
+                for tu in pending_tool_uses:
+                    self._session, call_id = record_tool_call(
+                        self._session, turn_id, tu.name, tu.input
+                    )
+                    call_ids.append(call_id)
+
+                # 3e. If no tool uses, break
+                if not pending_tool_uses:
                     break
 
-            # 3d. Record assistant message (always, even if empty text)
-            accumulated_text = "".join(text_buffer)
-            self._session, _ = add_assistant_text(
-                self._session, turn_id, accumulated_text
-            )
+                # 3f. Execute tools
+                for tu, call_id in zip(pending_tool_uses, call_ids):
+                    try:
+                        result_text = self._tool_executor.execute(tu.name, tu.input)
+                        is_error = False
+                    except Exception as exc:
+                        # Sanitize: expose exception type only, not message (may contain
+                        # internal paths, credentials, or implementation details).
+                        result_text = f"Tool execution failed: {type(exc).__name__}"
+                        is_error = True
 
-            # Record tool calls
-            call_ids: list[str] = []
-            for tu in pending_tool_uses:
-                self._session, call_id = record_tool_call(
-                    self._session, turn_id, tu.name, tu.input
-                )
-                call_ids.append(call_id)
-
-            # 3e. If no tool uses, break
-            if not pending_tool_uses:
-                break
-
-            # 3f. Execute tools
-            for tu, call_id in zip(pending_tool_uses, call_ids):
-                try:
-                    result_text = self._tool_executor.execute(tu.name, tu.input)
-                    is_error = False
-                except Exception as exc:
-                    result_text = f"ERROR: {type(exc).__name__}: {exc}"
-                    is_error = True
-
-                self._session, _ = record_tool_result(
-                    self._session, turn_id, call_id, result_text, is_error
-                )
-
-                all_tool_calls.append(
-                    ToolCallInfo(
-                        tool_call_id=call_id,
-                        tool_name=tu.name,
-                        input_json=tu.input,
-                        output_text=result_text,
-                        is_error=is_error,
+                    self._session, _ = record_tool_result(
+                        self._session, turn_id, call_id, result_text, is_error
                     )
-                )
 
-            # 3g/h. Check if we've hit the limit on the next iteration
-            if iterations >= self._max_iterations:
-                hit_limit = True
-                break
+                    all_tool_calls.append(
+                        ToolCallInfo(
+                            tool_call_id=call_id,
+                            tool_name=tu.name,
+                            input_json=tu.input,
+                            output_text=result_text,
+                            is_error=is_error,
+                        )
+                    )
 
-        else:
-            # while loop exhausted without break = hit iteration limit
+                # 3g. Check iteration limit
+                if iterations >= self._max_iterations:
+                    hit_limit = True
+                    break
+
+        except Exception:
+            # API stream or on_text callback raised — close the turn as FAILED so the
+            # session is never left with an open turn, then re-raise.
             hit_limit = True
+            status = TurnStatus.FAILED
+            self._session = end_turn(self._session, turn_id, status)
+            raise
 
-        # 4. Close turn
+        # 4. Close turn (normal path)
         status = TurnStatus.FAILED if hit_limit else TurnStatus.COMPLETED
         self._session = end_turn(self._session, turn_id, status)
 

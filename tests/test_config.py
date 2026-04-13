@@ -12,7 +12,6 @@ import pytest
 
 from realtalk.config import ConfigLoader, _deep_merge
 
-
 # ---------------------------------------------------------------------------
 # From original spec (7 tests)
 # ---------------------------------------------------------------------------
@@ -206,3 +205,73 @@ def test_deep_merge_utility():
     # Lists replace entirely, not merge
     result = _deep_merge({"a": [1, 2]}, {"a": [3]})
     assert result == {"a": [3]}
+
+
+def test_temperature_valid_range(tmp_path, monkeypatch):
+    """Temperature must be 0.0-2.0 (litellm API spec)."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    # Valid temperatures
+    for temp in [0.0, 0.5, 1.0, 1.5, 2.0]:
+        config_file = tmp_path / ".realtalk.json"
+        config_file.write_text(f'{{"game": {{"temperature": {temp}}}}}')
+        loader = ConfigLoader(cwd=tmp_path)
+        cfg = loader.load()
+        assert cfg.game.temperature == temp
+
+
+def test_temperature_out_of_range_rejected(tmp_path, monkeypatch):
+    """Temperature < 0.0 or > 2.0 raises ValidationError."""
+    import pytest
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    for temp in [-0.1, 2.1, 5.0]:
+        config_file = tmp_path / ".realtalk.json"
+        config_file.write_text(f'{{"game": {{"temperature": {temp}}}}}')
+        loader = ConfigLoader(cwd=tmp_path)
+        with pytest.raises(ValidationError):
+            loader.load()
+
+
+def test_max_tokens_must_be_positive(tmp_path, monkeypatch):
+    """max_tokens must be >= 1."""
+    import pytest
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    # Valid
+    config_file = tmp_path / ".realtalk.json"
+    config_file.write_text('{"game": {"max_tokens": 100}}')
+    loader = ConfigLoader(cwd=tmp_path)
+    cfg = loader.load()
+    assert cfg.game.max_tokens == 100
+
+    # Invalid
+    config_file.write_text('{"game": {"max_tokens": 0}}')
+    loader = ConfigLoader(cwd=tmp_path)
+    with pytest.raises(ValidationError):
+        loader.load()
+
+
+def test_game_config_defaults(tmp_path, monkeypatch):
+    """Game config has sensible defaults."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    # Create empty config
+    config_file = tmp_path / ".realtalk.json"
+    config_file.write_text('{}')
+    loader = ConfigLoader(cwd=tmp_path)
+    cfg = loader.load()
+
+    # Verify defaults
+    assert cfg.game.model == "claude-haiku-4-5-20251001"
+    assert cfg.game.temperature == 1.0
+    assert cfg.game.max_tokens == 8096
+    assert cfg.game.min_turns_to_win == 8
