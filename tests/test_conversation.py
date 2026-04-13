@@ -16,6 +16,12 @@ from realtalk.api import (
     ToolUse,
     UsageEvent,
 )
+from realtalk.conversation import (
+    ConversationRuntime,
+    NoOpExecutor,
+    StaticExecutor,
+    format_session_for_api,
+)
 from realtalk.session import (
     MessageRole,
     ToolCallRecorded,
@@ -29,15 +35,6 @@ from realtalk.session import (
     record_tool_result,
     start_turn,
 )
-from realtalk.conversation import (
-    ConversationRuntime,
-    EchoExecutor,
-    NoOpExecutor,
-    StaticExecutor,
-    TurnSummary,
-    format_session_for_api,
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers

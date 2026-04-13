@@ -25,7 +25,6 @@ from realtalk.session import (
     MessageAdded,
     MessageRole,
     Session,
-    SessionEvent,
     ToolCallRecorded,
     ToolResultRecorded,
     TurnStatus,
@@ -36,7 +35,6 @@ from realtalk.session import (
     record_tool_result,
     start_turn,
 )
-
 
 # ---------------------------------------------------------------------------
 # Protocols
