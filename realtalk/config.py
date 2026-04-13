@@ -4,10 +4,15 @@ realtalk.config — Layer 2: layered game configuration.
 Three-tier merge: user ~/.realtalk/config.json < project .realtalk.json
 < local .realtalk/settings.local.json. Lower tiers (more local) win on conflict.
 Deep-merge for nested dicts (e.g. hooks keys are merged, not overwritten).
+Lists replace entirely — the higher-priority tier wins the whole list.
 
 Uses chz for live, immutable config objects and pydantic for the JSON
 deserialization/validation boundary. Parse once at startup; read typed
 fields throughout the game.
+
+Design rule: defaults live only in pydantic models. chz classes carry no
+defaults of their own (except complex types that need chz.field). This keeps
+the source of truth in one place and prevents silent drift.
 
 Dependencies: none (no imports from this project).
 """
@@ -19,7 +24,7 @@ import os
 from pathlib import Path
 
 import chz
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +52,28 @@ class RawGameConfig(BaseModel):
             raise ValueError("arc_trigger_threshold must be 1–100")
         return v
 
+    @model_validator(mode="after")
+    def check_ranges(self) -> RawGameConfig:
+        if self.mood_start_min > self.mood_start_max:
+            raise ValueError(
+                f"mood_start_min ({self.mood_start_min}) must be "
+                f"<= mood_start_max ({self.mood_start_max})"
+            )
+        if self.security_start_min > self.security_start_max:
+            raise ValueError(
+                f"security_start_min ({self.security_start_min}) must be "
+                f"<= security_start_max ({self.security_start_max})"
+            )
+        if self.turn_hard_cap < 1:
+            raise ValueError(
+                f"turn_hard_cap must be >= 1, got {self.turn_hard_cap}"
+            )
+        if self.min_turns_to_win < 1:
+            raise ValueError(
+                f"min_turns_to_win must be >= 1, got {self.min_turns_to_win}"
+            )
+        return self
+
 
 class RawContributorConfig(BaseModel):
     enabled: bool = False
@@ -73,33 +100,36 @@ class RawRuntimeConfig(BaseModel):
 
 # ---------------------------------------------------------------------------
 # chz configuration objects — live, immutable, used throughout the game
+#
+# Defaults are intentionally absent from scalar fields here. All values are
+# populated by ConfigLoader._to_chz() from the validated pydantic models.
+# This preserves a single source of truth for defaults.
 # ---------------------------------------------------------------------------
 
 
 @chz.chz
 class GameConfig:
-    model: str = "claude-haiku-4-5-20251001"
-    min_turns_to_win: int = 8
-    turn_hard_cap: int = 25
-    arc_trigger_threshold: int = 80
-    mood_start_min: int = 30
-    mood_start_max: int = 50
-    security_start_min: int = 40
-    security_start_max: int = 60
-    reaction_delta_low: int = 3
-    reaction_delta_medium: int = 7
-    reaction_delta_high: int = 12
+    model: str
+    min_turns_to_win: int
+    turn_hard_cap: int
+    arc_trigger_threshold: int
+    mood_start_min: int
+    mood_start_max: int
+    security_start_min: int
+    security_start_max: int
+    reaction_delta_low: int
+    reaction_delta_medium: int
+    reaction_delta_high: int
 
     def reaction_delta(self, intensity: int) -> int:
-        """Return the mood point delta for a player reaction of the given intensity (1–3).
+        """Return the mood point delta for a player reaction of the given intensity.
 
-        >>> GameConfig().reaction_delta(1)
-        3
-        >>> GameConfig().reaction_delta(2)
-        7
-        >>> GameConfig().reaction_delta(3)
-        12
+        Intensity must be 1, 2, or 3. Raises ValueError for any other value.
         """
+        if intensity not in (1, 2, 3):
+            raise ValueError(
+                f"intensity must be 1, 2, or 3, got {intensity!r}"
+            )
         return {
             1: self.reaction_delta_low,
             2: self.reaction_delta_medium,
@@ -109,8 +139,8 @@ class GameConfig:
 
 @chz.chz
 class ContributorConfig:
-    enabled: bool = False
-    session_dir: str = "~/.realtalk/sessions"
+    enabled: bool
+    session_dir: str
 
     @chz.init_property
     def resolved_session_dir(self) -> Path:
@@ -119,12 +149,13 @@ class ContributorConfig:
 
 @chz.chz
 class DisplayConfig:
-    no_color: bool = False
-    debug: bool = False
+    no_color: bool
+    debug: bool
 
 
 @chz.chz
 class HookConfig:
+    # chz.field required for mutable collection defaults
     pre_tool_use: list[str] = chz.field(default_factory=list)
     post_tool_use: list[str] = chz.field(default_factory=list)
     post_tool_use_failure: list[str] = chz.field(default_factory=list)
@@ -132,13 +163,19 @@ class HookConfig:
 
 @chz.chz
 class RuntimeConfig:
-    game: GameConfig = chz.field(default_factory=GameConfig)
-    contributor: ContributorConfig = chz.field(default_factory=ContributorConfig)
-    display: DisplayConfig = chz.field(default_factory=DisplayConfig)
-    hooks: HookConfig = chz.field(default_factory=HookConfig)
+    game: GameConfig
+    contributor: ContributorConfig
+    display: DisplayConfig
+    hooks: HookConfig
 
-    @chz.init_property
+    @property
     def api_key(self) -> str:
+        """Return the Anthropic API key from the environment.
+
+        Raises EnvironmentError if ANTHROPIC_API_KEY is not set or is empty.
+        Evaluated lazily so that config.load() always succeeds — the error
+        surfaces only when the key is actually needed.
+        """
         key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not key:
             raise EnvironmentError(
@@ -149,17 +186,21 @@ class RuntimeConfig:
 
 
 # ---------------------------------------------------------------------------
-# Three-tier config loader
+# Utilities
 # ---------------------------------------------------------------------------
 
 
 def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
     """Mutate *base* in place, merging *override* recursively. Override wins on leaf conflicts.
 
+    Dicts are merged recursively. All other types (including lists) are replaced entirely.
+
     >>> _deep_merge({"a": {"x": 1}}, {"a": {"y": 2}})
     {'a': {'x': 1, 'y': 2}}
     >>> _deep_merge({"a": 1}, {"a": 2})
     {'a': 2}
+    >>> _deep_merge({"a": [1, 2]}, {"a": [3]})
+    {'a': [3]}
     """
     for key, value in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -167,6 +208,11 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
         else:
             base[key] = value
     return base
+
+
+# ---------------------------------------------------------------------------
+# Three-tier config loader
+# ---------------------------------------------------------------------------
 
 
 class ConfigLoader:
