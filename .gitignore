@@ -10,3 +10,4 @@ build/
 .venv/
 .realtalk/settings.local.json
 .realtalk/sessions/
+.env

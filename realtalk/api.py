@@ -13,7 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator, Protocol, Sequence, runtime_checkable
 
-
 # ---------------------------------------------------------------------------
 # Event types emitted by the stream
 # ---------------------------------------------------------------------------
@@ -123,11 +122,160 @@ class MockClient:
 # ---------------------------------------------------------------------------
 
 
-class AnthropicClient:
-    """Streaming Anthropic SDK client.
+class LiteLLMClient:
+    """Streaming LLM client using litellm.ai for multi-provider support.
 
-    Converts the SDK's streaming event model into our internal AssistantEvent
-    union. Sync iterator only — no async.
+    Supports any provider litellm.ai supports: Anthropic, OpenAI, Google, Llama, etc.
+    Auto-detects API keys from environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc).
+
+    Args:
+        model: Model identifier (e.g., "claude-3-5-sonnet-20241022")
+        temperature: Sampling temperature, 0.0-2.0 (default 1.0)
+        max_tokens: Maximum output tokens (default 8096)
+        api_key: Optional explicit API key (overrides env)
+
+    Example:
+        >>> client = LiteLLMClient(model="claude-3-5-sonnet-20241022")  # doctest: +SKIP
+        >>> request = ApiRequest(  # doctest: +SKIP
+        ...     system_prompt=["You are helpful."],
+        ...     messages=[{"role": "user", "content": "Hello"}],
+        ...     tools=[],
+        ...     model="claude-3-5-sonnet-20241022"
+        ... )
+        >>> events = list(client.stream(request))  # doctest: +SKIP
+    """
+
+    def __init__(
+        self,
+        model: str,
+        temperature: float = 1.0,
+        max_tokens: int = 8096,
+        api_key: str | None = None,
+    ) -> None:
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.api_key = api_key
+
+    def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:
+        """Stream events from litellm, converting to our AssistantEvent format.
+
+        Parses streaming SSE events and yields TextDelta, ToolUse, UsageEvent, and
+        MessageStop as they arrive. Normalizes provider-specific differences.
+
+        Raises:
+            ImportError: If litellm is not installed
+            RuntimeError: On API authentication or network errors
+        """
+        try:
+            import litellm
+        except ImportError:
+            raise ImportError(
+                "litellm is required. Install with: pip install 'litellm>=1.50'"
+            )
+
+        system_prompt = "\n".join(request.system_prompt) if request.system_prompt else ""
+        messages = request.messages.copy()
+
+        try:
+            response = litellm.completion(
+                model=self.model,
+                messages=messages,
+                system=system_prompt if system_prompt else None,
+                tools=request.tools if request.tools else None,
+                stream=True,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                api_key=self.api_key,
+            )
+
+            tool_input_buffer = ""
+            tool_id = ""
+            tool_name = ""
+
+            for event in response:
+                if isinstance(event, dict):
+                    # Handle usage information
+                    if "usage" in event:
+                        usage = event["usage"]
+                        yield UsageEvent(
+                            input_tokens=usage.get("prompt_tokens", 0),
+                            output_tokens=usage.get("completion_tokens", 0),
+                            cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+                            cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+                        )
+
+                    # Handle choice deltas (streaming content)
+                    if "choices" in event:
+                        for choice in event["choices"]:
+                            if choice.get("finish_reason"):
+                                # Message completed
+                                if choice["finish_reason"] == "tool_calls":
+                                    # Tool use already yielded
+                                    pass
+                                yield MessageStop(stop_reason=choice["finish_reason"])
+                            else:
+                                delta = choice.get("delta", {})
+
+                                # Text content
+                                if "content" in delta and delta["content"]:
+                                    yield TextDelta(text=delta["content"])
+
+                                # Tool use (accumulate input JSON across chunks)
+                                if "tool_calls" in delta:
+                                    for tool_call in delta["tool_calls"]:
+                                        if "id" in tool_call:
+                                            tool_id = tool_call["id"]
+                                        if "function" in tool_call:
+                                            if "name" in tool_call["function"]:
+                                                tool_name = tool_call["function"]["name"]
+                                            if "arguments" in tool_call["function"]:
+                                                tool_input_buffer += tool_call["function"]["arguments"]
+                                        # When we have all parts, yield the tool use
+                                        if tool_id and tool_name and tool_input_buffer:
+                                            try:
+                                                import json
+                                                json.loads(tool_input_buffer)  # Validate JSON
+                                                yield ToolUse(
+                                                    id=tool_id,
+                                                    name=tool_name,
+                                                    input=tool_input_buffer,
+                                                )
+                                                tool_input_buffer = ""
+                                                tool_id = ""
+                                                tool_name = ""
+                                            except json.JSONDecodeError:
+                                                # Still accumulating JSON
+                                                pass
+
+        except Exception as e:
+            # Provide descriptive error messages
+            error_msg = str(e)
+            if "401" in error_msg or "authentication" in error_msg.lower():
+                raise RuntimeError(
+                    f"Authentication failed for model '{self.model}'. "
+                    "Verify your API key is set and valid."
+                ) from e
+            elif "404" in error_msg or "not found" in error_msg.lower():
+                raise RuntimeError(
+                    f"Model '{self.model}' not found or not supported. "
+                    "Check the model name and your provider."
+                ) from e
+            elif "rate limit" in error_msg.lower():
+                raise RuntimeError(
+                    f"Rate limited by {self.model} provider. Wait and retry."
+                ) from e
+            else:
+                raise RuntimeError(
+                    f"Failed to stream from {self.model}: {error_msg}"
+                ) from e
+
+
+class AnthropicClient:
+    """[DEPRECATED] Streaming Anthropic SDK client.
+
+    Use LiteLLMClient instead. Converts the SDK's streaming event model into our
+    internal AssistantEvent union. Sync iterator only — no async.
 
     Args:
         api_key: Anthropic API key. Defaults to ANTHROPIC_API_KEY env var.
@@ -135,7 +283,7 @@ class AnthropicClient:
 
     def __init__(self, api_key: str | None = None) -> None:
         raise NotImplementedError(
-            "AnthropicClient is a stub. Implement by wrapping anthropic.Anthropic."
+            "AnthropicClient is deprecated. Use LiteLLMClient instead."
         )
 
     def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:

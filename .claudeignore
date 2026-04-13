@@ -1,0 +1,15 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.idea/
+truss*
+src/new_models.py
+logs/
+output/
+node_modules/
+dist/
+build/
+*.log
+coverage/

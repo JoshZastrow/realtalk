@@ -1,0 +1,23 @@
+{
+  "game": {
+    "model": "claude-haiku-4-5-20251001",
+    "min_turns_to_win": 8,
+    "turn_hard_cap": 25,
+    "arc_trigger_threshold": 80,
+    "mood_start_min": 30,
+    "mood_start_max": 50,
+    "security_start_min": 40,
+    "security_start_max": 60,
+    "reaction_delta_low": 3,
+    "reaction_delta_medium": 7,
+    "reaction_delta_high": 12
+  },
+  "contributor": {
+    "enabled": false,
+    "session_dir": "~/.realtalk/sessions"
+  },
+  "display": {
+    "no_color": false,
+    "debug": false
+  }
+}
