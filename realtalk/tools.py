@@ -5,12 +5,13 @@ Owns GAME_TOOL_SPECS (JSON schemas given to the LLM) and ToolRegistry
 (the dispatcher that implements ToolExecutor from conversation.py).
 
 Dispatch pipeline:
-  1. permission check  (GamePermissionPolicy.check)
-  2. pre-hook          (HookRunner.pre -> HookResult)
-  3. execute handler   (game_tools dispatch)
-  4. post-hook         (HookRunner.post -- fire-and-forget)
-  5. contributor capture (if enabled)
-  6. return result str
+  1. permission check   (GamePermissionPolicy.check)
+  2. pre-hook           (HookRunner.run_pre_tool_use -> HookResult)
+  3. execute handler    (game_tools dispatch)
+  4. post-hook          (HookRunner.run_post_tool_use)
+  5. failure hook       (HookRunner.run_post_tool_use_failure)
+  6. contributor capture (if enabled)
+  7. return result str / re-raise execution error
 
 Unknown tool -> "ERROR: unknown tool {name}" (not an exception).
 
@@ -31,7 +32,7 @@ from realtalk.game_tools import (
     handle_generate_options,
     handle_trigger_invitation,
 )
-from realtalk.hooks import ContributorCapture, HookDecision, HookRunner
+from realtalk.hooks import ContributorCapture, HookContext, HookRunner
 from realtalk.permissions import GamePermissionPolicy, PermissionMode
 
 
@@ -266,12 +267,13 @@ class ToolRegistry:
         Pipeline:
           1. Lookup spec (unknown -> error string, not exception)
           2. Permission check (denied -> PermissionDenied exception)
-          3. Pre-hook (deny -> error string)
+          3. Pre-hook (deny/failure -> error string)
           4. Parse input JSON
           5. Execute handler
-          6. Post-hook (fire-and-forget)
-          7. Contributor capture (if enabled)
-          8. Return result string
+          6. Post-hook
+          7. Failure hook + contributor capture on execution error
+          8. Contributor capture on success
+          9. Return result string
         """
         # 1. Lookup
         spec = self._spec_map.get(tool_name)
@@ -282,19 +284,48 @@ class ToolRegistry:
         self._policy.check(tool_name, spec.required_permission)
 
         # 3. Pre-hook
-        hook_result = self._hooks.pre(tool_name, tool_input)
-        if hook_result.decision == HookDecision.DENY:
+        hook_ctx = HookContext(tool_name=tool_name, tool_input=tool_input)
+        hook_result = self._hooks.run_pre_tool_use(hook_ctx)
+        if hook_result.denied:
             return f"ERROR: blocked by hook: {hook_result.reason}"
+        if hook_result.failed:
+            return f"ERROR: hook failed: {hook_result.reason}"
 
-        # 4. Parse input
-        input_data: dict[str, object] = json.loads(tool_input) if tool_input else {}
+        try:
+            # 4. Parse input
+            input_data: dict[str, object] = json.loads(tool_input) if tool_input else {}
 
-        # 5. Execute handler
-        handler = _HANDLER_MAP[tool_name]
-        result = handler(input_data, self._game_state, self._game_config)
+            # 5. Execute handler
+            handler = _HANDLER_MAP[tool_name]
+            result = handler(input_data, self._game_state, self._game_config)
+        except Exception as exc:
+            error_text = f"ERROR: {type(exc).__name__}: {exc}"
+            self._hooks.run_post_tool_use_failure(
+                HookContext(
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    tool_output=error_text,
+                    tool_is_error=True,
+                )
+            )
+            self._contributor.capture(
+                tool_name=tool_name,
+                input_json=tool_input,
+                output=error_text,
+                is_error=True,
+                turn_number=self._game_state.turn_number,
+            )
+            raise
 
         # 6. Post-hook (fire-and-forget)
-        self._hooks.post(tool_name, tool_input, result)
+        self._hooks.run_post_tool_use(
+            HookContext(
+                tool_name=tool_name,
+                tool_input=tool_input,
+                tool_output=result,
+                tool_is_error=False,
+            )
+        )
 
         # 7. Contributor capture
         self._contributor.capture(

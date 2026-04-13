@@ -6,13 +6,10 @@ LLM API client; hooks are tested against real shell execution.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from realtalk.config import HookConfig
 from realtalk.hooks import HookContext, HookEvent, HookResult, HookRunner
-
 
 # ---------------------------------------------------------------------------
 # Helpers
