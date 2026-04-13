@@ -26,7 +26,6 @@ from pathlib import Path
 import chz
 from pydantic import BaseModel, field_validator, model_validator
 
-
 # ---------------------------------------------------------------------------
 # Pydantic input models — validation boundary when loading JSON from disk
 # ---------------------------------------------------------------------------
@@ -34,6 +33,8 @@ from pydantic import BaseModel, field_validator, model_validator
 
 class RawGameConfig(BaseModel):
     model: str = "claude-haiku-4-5-20251001"
+    temperature: float = 1.0
+    max_tokens: int = 8096
     min_turns_to_win: int = 8
     turn_hard_cap: int = 25
     arc_trigger_threshold: int = 80   # mood >= this → Invitation Arc
@@ -44,6 +45,20 @@ class RawGameConfig(BaseModel):
     reaction_delta_low: int = 3       # intensity 1 → ±3 pts
     reaction_delta_medium: int = 7    # intensity 2 → ±7 pts
     reaction_delta_high: int = 12     # intensity 3 → ±12 pts
+
+    @field_validator("temperature")
+    @classmethod
+    def temperature_in_range(cls, v: float) -> float:
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("temperature must be 0.0–2.0")
+        return v
+
+    @field_validator("max_tokens")
+    @classmethod
+    def max_tokens_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("max_tokens must be >= 1")
+        return v
 
     @field_validator("arc_trigger_threshold")
     @classmethod
@@ -110,6 +125,8 @@ class RawRuntimeConfig(BaseModel):
 @chz.chz
 class GameConfig:
     model: str
+    temperature: float
+    max_tokens: int
     min_turns_to_win: int
     turn_hard_cap: int
     arc_trigger_threshold: int

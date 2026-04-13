@@ -171,7 +171,8 @@ class LiteLLMClient:
     """Streaming LLM client using litellm.ai for multi-provider support.
 
     Supports any provider litellm.ai supports: Anthropic, OpenAI, Google, Llama, etc.
-    Auto-detects API keys from environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc).
+    Auto-detects API keys from environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY,
+    etc).
 
     Args:
         model: Model identifier (e.g., "claude-3-5-sonnet-20241022")
@@ -219,7 +220,9 @@ class LiteLLMClient:
                 "litellm is required. Install with: pip install 'litellm>=1.50'"
             )
 
-        system_prompt = "\n".join(request.system_prompt) if request.system_prompt else ""
+        system_prompt = (
+            "\n".join(request.system_prompt) if request.system_prompt else ""
+        )
         messages = request.messages.copy()
 
         try:
@@ -275,7 +278,8 @@ class LiteLLMClient:
                                             if "name" in tool_call["function"]:
                                                 tool_name = tool_call["function"]["name"]
                                             if "arguments" in tool_call["function"]:
-                                                tool_input_buffer += tool_call["function"]["arguments"]
+                                                args = tool_call["function"]["arguments"]
+                                                tool_input_buffer += args
                                         # When we have all parts, yield the tool use
                                         if tool_id and tool_name and tool_input_buffer:
                                             try:

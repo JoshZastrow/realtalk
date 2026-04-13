@@ -1,4 +1,4 @@
-"""Tests for LiteLLMClient and FastAPI server skeleton."""
+"""Tests for LiteLLMClient and streaming LLM integration."""
 
 from __future__ import annotations
 
