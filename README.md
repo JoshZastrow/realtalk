@@ -88,6 +88,12 @@ pytest tests/test_session.py
 # Run with verbose output
 pytest -v
 
+# To run including integration tests to make real API calls, add to .env:
+PYTEST_INTEGRATION=1
+LITELLM_DEBUG=1
+# and un- SKIP tests in test_api_integration.py
+
+
 # Run with coverage
 pytest --cov=realtalk --cov-report=term-missing
 

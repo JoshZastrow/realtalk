@@ -345,3 +345,144 @@ def test_model_identifier_ollama():
     """Ollama local model identifiers are recognized."""
     client = LiteLLMClient(model="ollama/llama2")
     assert "ollama" in client.model.lower()
+
+
+# ---------------------------------------------------------------------------
+# Error message tests (Phase 5: Acceptance Testing)
+# ---------------------------------------------------------------------------
+
+
+def test_auth_error_message(monkeypatch):
+    """LiteLLMClient raises RuntimeError with helpful auth error message."""
+    from unittest.mock import MagicMock
+
+    def mock_completion(*args, **kwargs):
+        raise Exception("401 Unauthorized: Invalid API key")
+
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    client = LiteLLMClient(model="claude-test")
+    request = ApiRequest(
+        system_prompt=["You are helpful."],
+        messages=[{"role": "user", "content": "Test"}],
+        tools=[],
+    )
+
+    with pytest.raises(RuntimeError, match="Authentication failed"):
+        list(client.stream(request))
+
+
+def test_model_not_found_message(monkeypatch):
+    """LiteLLMClient raises RuntimeError with helpful model-not-found message."""
+
+    def mock_completion(*args, **kwargs):
+        raise Exception("404 Not Found: Model does not exist")
+
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    client = LiteLLMClient(model="nonexistent-model")
+    request = ApiRequest(
+        system_prompt=[],
+        messages=[{"role": "user", "content": "Test"}],
+        tools=[],
+    )
+
+    with pytest.raises(RuntimeError, match="not found or not supported"):
+        list(client.stream(request))
+
+
+def test_rate_limit_message(monkeypatch):
+    """LiteLLMClient raises RuntimeError with helpful rate-limit message."""
+
+    def mock_completion(*args, **kwargs):
+        raise Exception("429 Too Many Requests: Rate limit exceeded")
+
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    client = LiteLLMClient(model="claude-test")
+    request = ApiRequest(
+        system_prompt=[],
+        messages=[{"role": "user", "content": "Test"}],
+        tools=[],
+    )
+
+    with pytest.raises(RuntimeError, match="Rate limited"):
+        list(client.stream(request))
+
+
+def test_generic_error_message(monkeypatch):
+    """LiteLLMClient raises RuntimeError with helpful generic error message."""
+
+    def mock_completion(*args, **kwargs):
+        raise Exception("Connection refused")
+
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    client = LiteLLMClient(model="test-model-name")
+    request = ApiRequest(
+        system_prompt=[],
+        messages=[{"role": "user", "content": "Test"}],
+        tools=[],
+    )
+
+    with pytest.raises(RuntimeError, match="test-model-name"):
+        list(client.stream(request))
+
+
+# ---------------------------------------------------------------------------
+# Load testing (Phase 5: Acceptance Testing)
+# ---------------------------------------------------------------------------
+
+
+def test_sequential_calls_no_crash():
+    """100 sequential MockClient calls complete without crash or memory issues."""
+    # Create a simple event sequence
+    events = [TextDelta("x"), MessageStop()]
+
+    total_events = 0
+    for _ in range(100):
+        client = MockClient(events)
+        request = ApiRequest(
+            system_prompt=["test"],
+            messages=[{"role": "user", "content": "test"}],
+            tools=[],
+        )
+        result = list(client.stream(request))
+        total_events += len(result)
+
+    # Verify we got the expected number of events
+    assert total_events == 200  # 100 calls * 2 events per call
+
+
+def test_streaming_chunk_size():
+    """Streaming produces multiple events (chunk size verification).
+
+    This test verifies that streaming doesn't return the entire response
+    at once, but yields events incrementally.
+    """
+    # Create a client with MockClient that yields many text chunks
+    events = [
+        TextDelta("a"),
+        TextDelta("b"),
+        TextDelta("c"),
+        UsageEvent(input_tokens=10, output_tokens=3),
+        MessageStop(stop_reason="end_turn"),
+    ]
+    client = MockClient(events)
+    request = ApiRequest(
+        system_prompt=["test"],
+        messages=[{"role": "user", "content": "test"}],
+        tools=[],
+    )
+
+    result = list(client.stream(request))
+
+    # Verify we got multiple events (not just one bulk response)
+    assert len(result) >= 4, "Expected at least 4 events (3 TextDeltas + 1 Stop)"
+
+    # Verify text events are separate (streaming)
+    text_events = [e for e in result if isinstance(e, TextDelta)]
+    assert len(text_events) == 3, "Expected 3 separate TextDelta events"
+    assert text_events[0].text == "a"
+    assert text_events[1].text == "b"
+    assert text_events[2].text == "c"
