@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main, "JoshZastrow/**"]
   pull_request:
 
 jobs:
@@ -12,5 +14,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -e ".[dev]" -q
-      - run: python -m pytest -q
+      - name: Install dependencies
+        run: pip install -e ".[dev]" -q
+      - name: Run tests
+        run: python -m pytest -q

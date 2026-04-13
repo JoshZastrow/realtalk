@@ -1268,8 +1268,12 @@ def session_to_jsonl(session: Session) -> Iterator[str]:
         yield json.dumps(event_to_dict(event))
 
 
-def session_from_jsonl(lines: Iterable[str]) -> Session:
+def session_from_jsonl(lines: Iterable[str], *, skip_errors: bool = False) -> Session:
     """Reconstruct a Session from a JSONL event stream.
+
+    When *skip_errors* is True, invalid JSON lines are silently skipped
+    instead of raising.  This is used by the storage layer to recover
+    sessions after a crash that left a truncated final line.
 
     >>> s = new_session("/tmp/game", "realtalk")
     >>> s, turn_id = start_turn(s)
@@ -1295,6 +1299,8 @@ def session_from_jsonl(lines: Iterable[str]) -> Session:
         try:
             data = json.loads(line)
         except json.JSONDecodeError as exc:
+            if skip_errors:
+                continue
             raise SerializationError(f"Invalid JSON line: {exc}") from exc
 
         event = event_from_dict(data)
