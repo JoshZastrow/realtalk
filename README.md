@@ -98,9 +98,10 @@ pytest tests/test_api_litellm.py::test_litellm_client_init
 Tests cover:
 - **Layer 0 (session.py):** Event-sourced session model — 71 tests
 - **Layer 1 (storage.py):** Disk persistence, rotation, archival — 16 tests
-- **Layer 2 (config.py):** Layered configuration — 14 tests
+- **Layer 2 (config.py):** Layered configuration — 17 tests
 - **Layer 3 (api.py):** LLM provider integration — 23 tests
-- **Total:** 105 tests
+- **Layer 4 (conversation.py):** Conversation engine, tool loop, message formatting — 17 tests
+- **Total:** 152 tests
 
 ### Type check
 
@@ -207,13 +208,13 @@ Built in layers — each layer depends only on the layer below it.
 | v1.0 | 0 | `realtalk/session.py` | ✓ Done — event-sourced model + JSONL serialization (71 tests) |
 | v1.1 | 1 | `realtalk/storage.py` | ✓ Done — disk persistence, rotation, archival (16 tests) |
 | v1.1 | 2 | `realtalk/config.py` | ✓ Done — layered config via `chz` + pydantic (14 tests) |
-| v1.3 | 3 | `realtalk/api.py` | ✓ Done — multi-provider LLM via litellm.ai (26 tests) |
-| v0.4 | 4 | `realtalk/conversation.py` | Planned — game loop engine |
+| v1.3 | 3 | `realtalk/api.py` | ✓ Done — multi-provider LLM via litellm.ai (23 tests) |
+| v1.4 | 4 | `realtalk/conversation.py` | ✓ Done — conversation engine, tool loop, message formatting (17 tests) |
 | v0.5 | 5 | `realtalk/game.py` | Planned — scene, role, turn mechanics |
 | v0.6 | 6 | `realtalk/tui.py` | Planned — terminal UI |
 | v0.7 | 7 | `realtalk/cli.py` | Skeleton — entry point via `chz.nested_entrypoint` |
 
-**Current status:** Layers 0–3 complete (event sourcing, persistence, config, multi-provider LLM).
+**Current status:** Layers 0–4 complete (event sourcing, persistence, config, multi-provider LLM, conversation engine).
 
 See `docs/spec/` for detailed specs and acceptance criteria per layer.
 
@@ -225,4 +226,5 @@ See `docs/spec/` for detailed specs and acceptance criteria per layer.
 - [`docs/spec/v1.0.md`](docs/spec/v1.0.md) — Build spec: session data types (Layer 0)
 - [`docs/spec/v1.1.md`](docs/spec/v1.1.md) — Build spec: storage + configuration (Layers 1–2)
 - [`docs/spec/v1.3.md`](docs/spec/v1.3.md) — Build spec: multi-provider LLM integration (Layer 3)
+- [`docs/spec/v1.4.md`](docs/spec/v1.4.md) — Build spec: conversation engine (Layer 4)
 - [`docs/design/v1.2-design.md`](docs/design/v1.2-design.md) — Engineering review findings
