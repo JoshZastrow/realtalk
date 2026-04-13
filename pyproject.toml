@@ -27,6 +27,7 @@ realtalk = "realtalk.cli:entrypoint"
 
 [tool.ruff]
 target-version = "py311"
+line-length = 100
 select = ["E", "F", "I"]
 
 [tool.mypy]
