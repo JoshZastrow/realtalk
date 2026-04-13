@@ -70,8 +70,9 @@ class ApiRequest:
     system_prompt: list[str]
     messages: list[dict[str, object]]  # Anthropic message dicts
     tools: list[dict[str, object]]     # Anthropic tool definition dicts
-    model: str = "claude-opus-4-6"
+    model: str = "claude-haiku-4-5-20251001"
     max_tokens: int = 8096
+    temperature: float = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,50 @@ class MockClient:
 
     def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:  # noqa: ARG002
         yield from self._events
+
+
+# ---------------------------------------------------------------------------
+# ScriptedClient — multi-call test double
+# ---------------------------------------------------------------------------
+
+
+class ScriptedClient:
+    """Serves different event sequences on successive stream() calls.
+
+    Each stream() call pops the next sequence. Raises IndexError if called
+    more times than there are sequences. Records each ApiRequest for assertions.
+
+    >>> client = ScriptedClient([
+    ...     [TextDelta("hi"), MessageStop()],
+    ...     [TextDelta("bye"), MessageStop()],
+    ... ])
+    >>> list(client.stream(ApiRequest(system_prompt=[], messages=[], tools=[])))
+    [TextDelta(text='hi'), MessageStop(stop_reason='end_turn')]
+    >>> list(client.stream(ApiRequest(system_prompt=[], messages=[], tools=[])))
+    [TextDelta(text='bye'), MessageStop(stop_reason='end_turn')]
+    >>> client.call_count
+    2
+    """
+
+    def __init__(self, sequences: list[list[AssistantEvent]]) -> None:
+        self._sequences = list(sequences)
+        self._index = 0
+        self.requests: list[ApiRequest] = []
+
+    @property
+    def call_count(self) -> int:
+        return self._index
+
+    def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:
+        if self._index >= len(self._sequences):
+            raise IndexError(
+                f"ScriptedClient exhausted: {self._index} calls made, "
+                f"only {len(self._sequences)} sequences provided"
+            )
+        self.requests.append(request)
+        events = self._sequences[self._index]
+        self._index += 1
+        yield from events
 
 
 # ---------------------------------------------------------------------------
