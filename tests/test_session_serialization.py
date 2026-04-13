@@ -2,8 +2,11 @@
 
 import json
 
+import pytest
+
 from realtalk.session import (
     FeedbackSource,
+    SerializationError,
     TurnStatus,
     add_assistant_text,
     add_user_text,
@@ -124,3 +127,21 @@ def test_replay_after_round_trip_is_identical():
 
     s2 = session_from_jsonl(session_to_jsonl(s))
     assert replay(s) == replay(s2)
+
+
+# ---------------------------------------------------------------------------
+# skip_errors parameter
+# ---------------------------------------------------------------------------
+
+
+def test_session_from_jsonl_skip_errors():
+    """skip_errors=True silently drops invalid JSON lines."""
+    s = new_session("/tmp", "realtalk")
+    good_lines = list(session_to_jsonl(s))
+    bad_lines = good_lines + ['{"incomplete":']
+    # Default behaviour: raises on bad JSON
+    with pytest.raises(SerializationError):
+        session_from_jsonl(bad_lines)
+    # skip_errors: succeeds, bad line ignored
+    result = session_from_jsonl(bad_lines, skip_errors=True)
+    assert len(result.events) == len(s.events)
