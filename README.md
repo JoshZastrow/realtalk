@@ -76,6 +76,25 @@ See [litellm provider docs](https://docs.litellm.ai/docs/providers) for full lis
 
 ## Development
 
+### gstack (recommended)
+
+This project uses [gstack](https://github.com/garrytan/gstack) for AI-assisted workflows.
+Install it for the best experience:
+
+```bash
+git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+cd ~/.claude/skills/gstack && ./setup --team
+```
+
+Skills like /qa, /ship, /review, /investigate, and /browse become available after install.
+Use /browse for all web browsing. Use ~/.claude/skills/gstack/... for gstack file paths.
+
+If skills aren't working: cd ~/.claude/skills/gstack && ./setup
+
+####
+```bash
+.claude/settings.json # project standards / safety gates, edit and add to .gitignore if you want otherwise
+
 ### Run tests
 
 ```bash

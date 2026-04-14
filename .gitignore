@@ -1,13 +1,36 @@
+# Python
 __pycache__/
 *.pyc
-*.pyo
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+
+# Test / lint caches
 .hypothesis/
 .pytest_cache/
-*.egg-info/
+.ruff_cache/
+coverage/
+
+# Build artifacts
 dist/
 build/
-.python-version
-.venv/
-.realtalk/settings.local.json
-.realtalk/sessions/
+
+# Environment / secrets
 .env
+
+# Editor / OS
+.idea/
+.DS_Store
+
+# Logs / output
+logs/
+output/
+*.log
+
+# JS (precautionary)
+node_modules/
+
+# Dev choices
+.claude/settings.json

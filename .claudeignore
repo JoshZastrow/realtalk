@@ -1,15 +1,29 @@
-venv/
-.venv/
+# Python
 __pycache__/
 *.pyc
-.DS_Store
-*.idea/
-truss*
-src/new_models.py
-logs/
-output/
-node_modules/
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+coverage/
+
+# Build artifacts
 dist/
 build/
+
+# Editor / OS
+.idea/
+.DS_Store
+
+# Logs / output
+logs/
+output/
 *.log
-coverage/
+
+# JS (precautionary)
+node_modules/

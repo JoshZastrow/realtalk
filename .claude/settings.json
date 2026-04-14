@@ -1,0 +1,31 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(pytest*)",
+            "Bash(python -m pytest*)",
+            "Bash(pytest* -m \"not integration\"*)",
+            "Bash(pytest* --mock* *)",
+            "Bash(pytest* -m mock*)",
+            "Bash(ruff check*)",
+            "Bash(ruff format*)",
+            "Bash(python -m ruff*)"
+        ],
+        "deny": [
+            "Bash(git add*)",
+            "Bash(git commit*)"
+        ]
+    },
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node -e \"const inp=require('fs').readFileSync('/dev/stdin','utf8');const tool=JSON.parse(inp);const cmd=tool.tool_input?.command||'';if(/git (add|commit)/.test(cmd)){const {execSync}=require('child_process');try{execSync('pytest -m \"not integration\" -q',{stdio:'inherit'});execSync('ruff check .',{stdio:'inherit'});}catch(e){console.error('Tests or lint failed — commit blocked.');process.exit(2);}}\""
+                    }
+                ]
+            }
+        ]
+    }
+}
