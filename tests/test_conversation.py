@@ -479,3 +479,41 @@ def test_second_api_call_includes_tool_results():
     # The second request should contain more messages than the first
     assert len(client.requests) == 2
     assert len(client.requests[1].messages) > len(client.requests[0].messages)
+
+
+# ---------------------------------------------------------------------------
+# 18. set_system_prompt replaces the prompt for subsequent turns
+# ---------------------------------------------------------------------------
+
+
+def test_set_system_prompt_replaces_prompt():
+    """Engine rebinds the system prompt between turns; next request uses new prompt."""
+    client = ScriptedClient([
+        [TextDelta("first"), MessageStop()],
+        [TextDelta("second"), MessageStop()],
+    ])
+    runtime = _make_runtime(client, system_prompt=["initial"])
+    runtime.run_turn("one")
+    assert client.requests[0].system_prompt == ["initial"]
+
+    runtime.set_system_prompt(["updated", "dynamic"])
+    runtime.run_turn("two")
+    assert client.requests[1].system_prompt == ["updated", "dynamic"]
+
+
+# ---------------------------------------------------------------------------
+# 19. set_session replaces the internal session reference
+# ---------------------------------------------------------------------------
+
+
+def test_set_session_replaces_session():
+    """Engine swaps the internal session (used by compaction to hand back a trimmed session)."""
+    client = MockClient([TextDelta("hi"), MessageStop()])
+    runtime = _make_runtime(client)
+    original_id = runtime.session.session_id
+
+    replacement = new_session("/tmp/test", "realtalk", model_hint="test-model")
+    assert replacement.session_id != original_id
+
+    runtime.set_session(replacement)
+    assert runtime.session.session_id == replacement.session_id

@@ -11,6 +11,7 @@ No project dependencies. Pure I/O adapter between the conversation loop and the 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Iterator, Protocol, Sequence, runtime_checkable
 
 # ---------------------------------------------------------------------------
@@ -197,11 +198,15 @@ class LiteLLMClient:
         temperature: float = 1.0,
         max_tokens: int = 8096,
         api_key: str | None = None,
+        max_retries: int = 2,
+        retry_backoff_seconds: float = 0.5,
     ) -> None:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.api_key = api_key
+        self.max_retries = max_retries
+        self.retry_backoff_seconds = retry_backoff_seconds
 
     def stream(self, request: ApiRequest) -> Iterator[AssistantEvent]:
         """Stream events from litellm, converting to our AssistantEvent format.
@@ -226,16 +231,25 @@ class LiteLLMClient:
         messages = request.messages.copy()
 
         try:
-            response = litellm.completion(
-                model=self.model,
-                messages=messages,
-                system=system_prompt if system_prompt else None,
-                tools=request.tools if request.tools else None,
-                stream=True,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                api_key=self.api_key,
-            )
+            response = None
+            for attempt in range(self.max_retries + 1):
+                try:
+                    response = litellm.completion(
+                        model=self.model,
+                        messages=messages,
+                        system=system_prompt if system_prompt else None,
+                        tools=request.tools if request.tools else None,
+                        stream=True,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                        api_key=self.api_key,
+                    )
+                    break
+                except Exception as exc:
+                    if not _is_retryable_error(exc) or attempt >= self.max_retries:
+                        raise
+                    time.sleep(self.retry_backoff_seconds * (attempt + 1))
+            assert response is not None
 
             tool_input_buffer = ""
             tool_id = ""
@@ -329,6 +343,22 @@ class LiteLLMClient:
                 raise RuntimeError(
                     f"Failed to stream from {self.model}: {error_msg}"
                 ) from e
+
+
+def _is_retryable_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(
+        token in message
+        for token in (
+            "connection reset by peer",
+            "connection refused",
+            "internalservererror",
+            "timeout",
+            "temporarily unavailable",
+            "server disconnected",
+            "apiconnectionerror",
+        )
+    )
 
 
 class AnthropicClient:

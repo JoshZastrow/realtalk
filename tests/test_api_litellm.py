@@ -429,6 +429,34 @@ def test_generic_error_message(monkeypatch):
         list(client.stream(request))
 
 
+def test_transient_connection_reset_retries(monkeypatch):
+    """LiteLLMClient retries transient provider resets before succeeding."""
+    calls = {"count": 0}
+
+    def mock_completion(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise Exception("litellm.InternalServerError: AnthropicException - [Errno 54] Connection reset by peer")
+        return [{"choices": [{"delta": {"content": "ok"}}]}, {"choices": [{"finish_reason": "stop"}]}]
+
+    monkeypatch.setattr("litellm.completion", mock_completion)
+
+    client = LiteLLMClient(
+        model="claude-test",
+        max_retries=1,
+        retry_backoff_seconds=0.0,
+    )
+    request = ApiRequest(
+        system_prompt=[],
+        messages=[{"role": "user", "content": "Test"}],
+        tools=[],
+    )
+
+    events = list(client.stream(request))
+    assert calls["count"] == 2
+    assert any(isinstance(event, TextDelta) and event.text == "ok" for event in events)
+
+
 # ---------------------------------------------------------------------------
 # Load testing (Phase 5: Acceptance Testing)
 # ---------------------------------------------------------------------------

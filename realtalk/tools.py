@@ -74,9 +74,9 @@ GAME_TOOL_SPECS: list[ToolSpec] = [
                 },
                 "mood_intensity": {
                     "type": "integer",
-                    "minimum": 1,
+                    "minimum": 0,
                     "maximum": 3,
-                    "description": "1=subtle, 2=noticeable, 3=strong.",
+                    "description": "0=no bar change, 1=subtle, 2=noticeable, 3=strong.",
                 },
                 "security_direction": {
                     "type": "string",
@@ -85,9 +85,9 @@ GAME_TOOL_SPECS: list[ToolSpec] = [
                 },
                 "security_intensity": {
                     "type": "integer",
-                    "minimum": 1,
+                    "minimum": 0,
                     "maximum": 3,
-                    "description": "1=subtle, 2=noticeable, 3=strong.",
+                    "description": "0=no bar change, 1=subtle, 2=noticeable, 3=strong.",
                 },
                 "narrative_cue": {
                     "type": "string",
