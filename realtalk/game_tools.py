@@ -22,6 +22,7 @@ from realtalk.config import GameConfig
 _VALID_MOOD_DIRECTIONS = {"a", "r"}
 _VALID_SECURITY_DIRECTIONS = {"c", "p"}
 _VALID_INTENSITIES = {1, 2, 3}
+_VALID_RESPONSE_INTENSITIES = {0, 1, 2, 3}
 
 
 def _validate_direction(value: str, valid: set[str], field_name: str) -> str:
@@ -33,6 +34,12 @@ def _validate_direction(value: str, valid: set[str], field_name: str) -> str:
 def _validate_intensity(value: int, field_name: str) -> int:
     if value not in _VALID_INTENSITIES:
         raise ValueError(f"{field_name} must be 1, 2, or 3, got {value}")
+    return value
+
+
+def _validate_response_intensity(value: int, field_name: str) -> int:
+    if value not in _VALID_RESPONSE_INTENSITIES:
+        raise ValueError(f"{field_name} must be 0, 1, 2, or 3, got {value}")
     return value
 
 
@@ -98,22 +105,22 @@ def handle_character_respond(
     mood_dir = _validate_direction(
         str(input_data["mood_direction"]), _VALID_MOOD_DIRECTIONS, "mood_direction"
     )
-    mood_int = _validate_intensity(int(input_data["mood_intensity"]), "mood_intensity")
+    mood_int = _validate_response_intensity(int(input_data["mood_intensity"]), "mood_intensity")
     sec_dir = _validate_direction(
         str(input_data["security_direction"]), _VALID_SECURITY_DIRECTIONS, "security_direction"
     )
-    sec_int = _validate_intensity(int(input_data["security_intensity"]), "security_intensity")
+    sec_int = _validate_response_intensity(int(input_data["security_intensity"]), "security_intensity")
     invite = bool(input_data["invite_turn"])
 
     # Apply mood delta (Stage 2)
-    mood_delta = game_config.reaction_delta(mood_int)
+    mood_delta = 0 if mood_int == 0 else game_config.reaction_delta(mood_int)
     if mood_dir == "r":
         mood_delta = -mood_delta
     game_state.mood += mood_delta
     game_state.clamp_mood()
 
     # Apply security delta
-    sec_delta = game_config.reaction_delta(sec_int)
+    sec_delta = 0 if sec_int == 0 else game_config.reaction_delta(sec_int)
     if sec_dir == "p":
         sec_delta = -sec_delta
     game_state.security += sec_delta

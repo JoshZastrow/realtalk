@@ -267,6 +267,10 @@ class StoredSession:
             fh.write(line + "\n")
             fh.flush()
 
+    def append_events(self, events: list[SessionEvent] | tuple[SessionEvent, ...]) -> None:
+        for event in events:
+            self.append(event)
+
     def load(self):
         """Replay all JSONL lines (across rotated files, oldest first) into a Session.
 
