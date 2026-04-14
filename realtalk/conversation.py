@@ -263,6 +263,22 @@ class ConversationRuntime:
         """The current session snapshot (read-only)."""
         return self._session
 
+    def set_system_prompt(self, sections: list[str]) -> None:
+        """Rebind the system prompt sections used by subsequent turns.
+
+        Used by the game engine to refresh the dynamic portion of the prompt
+        (scene, role, game-state) between turns.
+        """
+        self._system_prompt = sections
+
+    def set_session(self, session: Session) -> None:
+        """Swap the underlying session snapshot.
+
+        Used after compaction: the compactor returns a rebuilt Session, and the
+        runtime adopts it so subsequent turns format against the trimmed event log.
+        """
+        self._session = session
+
     def run_turn(self, user_input: str) -> TurnSummary:
         """Execute one full turn: user input -> assistant response(s) -> tool execution loop."""
         # 1. Open turn

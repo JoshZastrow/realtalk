@@ -275,3 +275,32 @@ def test_game_config_defaults(tmp_path, monkeypatch):
     assert cfg.game.temperature == 1.0
     assert cfg.game.max_tokens == 8096
     assert cfg.game.min_turns_to_win == 8
+
+
+def test_starting_ranges_exposed_as_tuples(tmp_path, monkeypatch):
+    """GameConfig exposes starting_mood_range / starting_security_range tuples.
+
+    Per spec D5: engine.select_role samples via `random.randint(*config.game.starting_mood_range)`.
+    Defaults: (30, 50) and (40, 60).
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    (tmp_path / ".realtalk.json").write_text("{}")
+    cfg = ConfigLoader(cwd=tmp_path).load()
+
+    assert cfg.game.starting_mood_range == (30, 50)
+    assert cfg.game.starting_security_range == (40, 60)
+
+
+def test_starting_ranges_reflect_overrides(tmp_path, monkeypatch):
+    """When mood_start_* / security_start_* are overridden, the tuples update."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    (tmp_path / ".realtalk.json").write_text(
+        '{"game": {"mood_start_min": 10, "mood_start_max": 20, '
+        '"security_start_min": 70, "security_start_max": 90}}'
+    )
+    cfg = ConfigLoader(cwd=tmp_path).load()
+
+    assert cfg.game.starting_mood_range == (10, 20)
+    assert cfg.game.starting_security_range == (70, 90)

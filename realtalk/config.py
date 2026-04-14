@@ -138,6 +138,16 @@ class GameConfig:
     reaction_delta_medium: int
     reaction_delta_high: int
 
+    @chz.init_property
+    def starting_mood_range(self) -> tuple[int, int]:
+        """Inclusive (min, max) range for starting mood. Sampled by GameEngine.select_role."""
+        return (self.mood_start_min, self.mood_start_max)
+
+    @chz.init_property
+    def starting_security_range(self) -> tuple[int, int]:
+        """Inclusive (min, max) range for starting security. Sampled by GameEngine.select_role."""
+        return (self.security_start_min, self.security_start_max)
+
     def reaction_delta(self, intensity: int) -> int:
         """Return the mood point delta for a player reaction of the given intensity.
 
