@@ -77,3 +77,10 @@ When the user's request matches an available skill, ALWAYS invoke it using the S
 - Architecture review → /plan-eng-review
 
 Use /browse for all web browsing. Never use mcp__claude-in-chrome__* tools.
+
+## Design System
+Always read DESIGN.md before making any visual or UI decisions.
+All colors, typography, spacing, status bar copy, and aesthetic direction are defined there.
+Do not deviate without explicit user approval.
+In QA mode, flag any TUI code that doesn't match DESIGN.md.
+Key constraints: parchment light mode (#f5f0e8 bg), JetBrains Mono, single shifting accent (#c4703a warm / #c4a03a mid / #5b8fa8 cold), block character status bars (█▓▒░), emotional copy labels (Warm/Strained/Fragile), ASCII scene headers, borderless dialogue zone.
