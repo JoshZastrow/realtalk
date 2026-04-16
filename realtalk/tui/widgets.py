@@ -4,6 +4,46 @@ from __future__ import annotations
 
 from textual.widgets import Static
 
+# ── Status bar label tables ────────────────────────────────────────────────────
+
+MOOD_LABELS: dict[tuple[int, int], str] = {
+    (65, 100): "Warm",
+    (35, 64): "Strained",
+    (0, 34): "Fragile",
+}
+
+SECURITY_LABELS: dict[tuple[int, int], str] = {
+    (65, 100): "Grounded",
+    (35, 64): "Uneasy",
+    (0, 34): "Exposed",
+}
+
+MOOD_COLORS: dict[tuple[int, int], str] = {
+    (65, 100): "#7da85a",
+    (35, 64): "#c4a03a",
+    (0, 34): "#9e4a4a",
+}
+
+
+def _label_for(value: int, table: dict[tuple[int, int], str]) -> str:
+    for (lo, hi), label in table.items():
+        if lo <= value <= hi:
+            return label
+    return ""
+
+
+def block_bar(value: int, width: int = 10) -> str:
+    """Render a block-character progress bar.  e.g. ████████▒░ for value=84."""
+    filled = round(max(0, min(100, value)) / 100 * width)
+    bar = "█" * filled
+    if filled < width:
+        bar += "▒"
+        bar += "░" * (width - filled - 1)
+    return bar
+
+
+# ── Widgets ────────────────────────────────────────────────────────────────────
+
 
 class StatusBar(Static):
     def __init__(
@@ -12,20 +52,27 @@ class StatusBar(Static):
         value: int,
         max_value: int = 100,
         delta_label: str = "",
-        color: str = "green",
+        color: str = "green",  # kept for backwards compat; unused after redesign
     ) -> None:
         self.label = label
         self.value = value
         self.max_value = max_value
         self.delta_label = delta_label
-        self.color = color
         super().__init__(self.render_text())
 
+    @property
+    def bar_color(self) -> str:
+        for (lo, hi), color in MOOD_COLORS.items():
+            if lo <= self.value <= hi:
+                return color
+        return "#7da85a"
+
     def render_text(self) -> str:
-        filled = max(0, min(20, round((self.value / self.max_value) * 20)))
-        bar = "[" + ("=" * filled).ljust(20) + "]"
-        suffix = f" {self.delta_label}" if self.delta_label else ""
-        return f"{self.label} {bar} {self.value}{suffix}"
+        label_table = MOOD_LABELS if self.label == "MOOD" else SECURITY_LABELS
+        state_label = _label_for(self.value, label_table)
+        bar = block_bar(self.value)
+        color = self.bar_color
+        return f"{self.label}  [{color}]{bar}[/{color}]  {state_label}  {self.value}"
 
     def refresh_bar(self, value: int, delta_label: str = "") -> None:
         self.value = value
@@ -50,7 +97,10 @@ class OptionPicker(Static):
     def render_text(self) -> str:
         if not self.options:
             return ""
-        return "\n".join(f"{index + 1}. {option}" for index, option in enumerate(self.options))
+        return "\n".join(
+            f"[dim]{index + 1}.[/dim]  {option}"
+            for index, option in enumerate(self.options)
+        )
 
 
 class MenuList(Static):
@@ -72,10 +122,12 @@ class MenuList(Static):
             self.update(self.render_text())
 
     def render_text(self) -> str:
-        lines = [self.title]
-        for index, item in enumerate(self.items):
-            prefix = ">" if index == self.selected_index else " "
-            lines.append(f"{prefix} {index + 1}. {item}")
+        lines = [f"[bold]{self.title}[/bold]"]
+        for i, item in enumerate(self.items):
+            if i == self.selected_index:
+                lines.append(f"[bold #c4a03a]→ {i + 1}. {item}[/bold #c4a03a]")
+            else:
+                lines.append(f"[dim]  {i + 1}. {item}[/dim]")
         return "\n".join(lines)
 
 
@@ -104,11 +156,15 @@ class ReactionInput(Static):
 
     def _render_text(self) -> str:
         if not self.raw_value:
-            return "Reaction: type a/r + 1-3  (e.g. a2 = attract medium, r1 = repel light)"
+            return "[dim]Reaction: type a/r + 1-3  (a2=attract medium, r1=repel light)[/dim]"
         if self.is_valid:
             direction_label = "attract" if self.direction == "a" else "repel"
-            return f"Reaction: {self.raw_value}  ({direction_label}, intensity {self.intensity}) — press 1/2/3 to respond"
-        return f"Reaction: {self.raw_value}_  (a=attract, r=repel, then 1-3)"
+            return (
+                f"Reaction: [bold #c4a03a]{self.raw_value}[/bold #c4a03a]"
+                f"  ({direction_label}, intensity {self.intensity})"
+                f" [dim]— press 1/2/3 to respond[/dim]"
+            )
+        return f"[dim]Reaction: {self.raw_value}_  (a=attract, r=repel, then 1-3)[/dim]"
 
     @property
     def is_valid(self) -> bool:

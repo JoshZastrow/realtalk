@@ -5,18 +5,86 @@ from __future__ import annotations
 import asyncio
 
 from textual.app import ComposeResult
+from textual.containers import Horizontal
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Static
+from textual.widgets import Label, Static
 
 from realtalk.engine import Action, GameEngine
 from realtalk.tui.widgets import DialogueArea, MenuList, OptionPicker, ReactionInput, StatusBar
+
+# ── ASCII scene headers ────────────────────────────────────────────────────────
+
+SCENE_HEADERS: dict[str, str] = {
+    "coffee_shop": (
+        "   ( )\n"
+        "  (   )\n"
+        "   \\_/\n"
+        "  ──────"
+    ),
+    "late_office": (
+        "    💡\n"
+        "  ┌───┐\n"
+        "  │   │\n"
+        "  └───┘"
+    ),
+    "hiking_trail": (
+        "    /\\\n"
+        "   /  \\\n"
+        "  /────\\\n"
+        "   ────"
+    ),
+    "house_party": (
+        "  ♪  ♫  ♪\n"
+        " ·  · · ·\n"
+        "  · · ·\n"
+        "  ──────"
+    ),
+    "bookstore": (
+        "  ╔═╗ ╔═╗\n"
+        "  ║ ║ ║ ║\n"
+        "  ╚═╝ ╚═╝\n"
+        "  ──────"
+    ),
+    "airport_gate": (
+        "   ✈\n"
+        "  ───────\n"
+        "  │ │ │ │\n"
+        "  ───────"
+    ),
+}
+
+_DEFAULT_HEADER = (
+    "  ·  ·  ·\n"
+    " ·  · ·  ·\n"
+    "  ·  ·  ·\n"
+    "  ──────"
+)
+
+
+class SceneHeader(Static):
+    """Centered ASCII illustration + scene/role label shown above dialogue."""
+
+    def __init__(self, scene_id: str, scene_name: str, role_name: str) -> None:
+        art = SCENE_HEADERS.get(scene_id, _DEFAULT_HEADER)
+        label = f"{scene_name.upper()} · {role_name.upper()}"
+        separator = "─" * 44
+        content = (
+            f"[dim]{art}[/dim]\n"
+            f"[dim]{label}[/dim]\n"
+            f"[dim]{separator}[/dim]"
+        )
+        super().__init__(content)
+
+
+# ── Screens ────────────────────────────────────────────────────────────────────
 
 
 class SceneScreen(Screen[None]):
     def __init__(self, engine: GameEngine) -> None:
         super().__init__()
         self.engine = engine
-        self.menu = MenuList("Choose a scene:", [scene.name for scene in self.engine.available_scenes()])
+        scenes = [scene.name for scene in self.engine.available_scenes()]
+        self.menu = MenuList("Choose a scene:", scenes)
 
     def compose(self) -> ComposeResult:
         yield self.menu
@@ -42,7 +110,8 @@ class RoleScreen(Screen[None]):
     def __init__(self, engine: GameEngine) -> None:
         super().__init__()
         self.engine = engine
-        self.menu = MenuList("Choose a role:", [role.name for role in self.engine.available_roles()])
+        roles = [role.name for role in self.engine.available_roles()]
+        self.menu = MenuList("Choose a role:", roles)
 
     def compose(self) -> ComposeResult:
         yield self.menu
@@ -75,6 +144,10 @@ class SituationScreen(Screen[None]):
         self._body = Static(self.opening)
 
     def compose(self) -> ComposeResult:
+        scene = self.engine._scene
+        role = self.engine._role
+        if scene is not None and role is not None:
+            yield SceneHeader(scene.id, scene.name, role.name)
         yield self._body
 
     async def on_mount(self) -> None:
@@ -90,7 +163,7 @@ class SituationScreen(Screen[None]):
             self._spinner_timer.stop()
         self.opening = opening
         self._ready = True
-        self._body.update(f"{self.opening}\n\nPress Enter to continue.")
+        self._body.update(f"{self.opening}\n\n[dim]Press Enter to continue.[/dim]")
 
     async def on_key(self, event) -> None:
         if event.key == "enter" and self._ready:
@@ -103,8 +176,8 @@ class SituationScreen(Screen[None]):
         self._spinner_frame = (self._spinner_frame + 1) % len(frames)
         spin = frames[self._spinner_frame]
         self._body.update(
-            f"{spin} Generating opening scene...\n\n"
-            "(This may take up to a minute while the character prepares their opening)"
+            f"[dim]{spin} Generating opening scene...[/dim]\n\n"
+            "[dim](This may take up to a minute while the character prepares their opening)[/dim]"
         )
 
 
@@ -120,7 +193,7 @@ class GameScreen(Screen[None]):
         self._spinner_timer = None
         self._dialogue_text = ""
         self._spinner_text = ""
-        self._status = Static("")
+        self._status = Static("", id="game-status")
         state = self.engine.current_state()
         self.mood = StatusBar("MOOD", state.mood, delta_label="")
         self.security = StatusBar("SECURITY", state.security, delta_label="")
@@ -129,15 +202,41 @@ class GameScreen(Screen[None]):
         self._render_dialogue()
 
     def compose(self) -> ComposeResult:
+        # Title bar
+        with Horizontal(id="title-bar"):
+            yield Label("[dim]realtalk[/dim]", id="title-left")
+            yield Label("[dim]^C quit[/dim]", id="title-right")
+        # Scene header
+        scene = self.engine._scene
+        role = self.engine._role
+        if scene is not None and role is not None:
+            yield SceneHeader(scene.id, scene.name, role.name)
+        # Dialogue zone (borderless, padded, 1fr)
         yield self.dialogue
-        yield Static("")
+        # Separator
+        yield Static("─" * 120, classes="separator")
+        # Action zone: status bars
         yield self.mood
         yield self.security
-        yield Static("")
+        # Reaction input
         yield self.reaction
-        yield Static("")
+        # Options
         yield self.options
+        # Status (thinking indicator)
         yield self._status
+
+    async def on_mount(self) -> None:
+        self._update_mood_class()
+
+    def _update_mood_class(self) -> None:
+        """Toggle mood-tier CSS class for shifting accent color."""
+        self.remove_class("mood-warm", "mood-mid", "mood-cold")
+        if self.mood.value >= 65:
+            self.add_class("mood-warm")
+        elif self.mood.value >= 35:
+            self.add_class("mood-mid")
+        else:
+            self.add_class("mood-cold")
 
     async def on_key(self, event) -> None:
         if self._processing:
@@ -145,7 +244,7 @@ class GameScreen(Screen[None]):
         if event.key in {"1", "2", "3"} and self.reaction.is_valid:
             self._processing = True
             self._spinner_text = ""
-            self._status.update("Thinking")
+            self._status.update("[dim]Thinking...[/dim]")
             self._spinner_timer = self.set_interval(0.25, self._tick_spinner)
             action = Action(
                 self.reaction.direction or "a",
@@ -154,10 +253,8 @@ class GameScreen(Screen[None]):
             )
             asyncio.create_task(self._run_step(action))
         elif event.key in {"a", "r", "A", "R"}:
-            # Start or restart reaction with a direction key
             self.reaction.set_value(event.key.lower())
         elif event.key in {"1", "2", "3"} and self.reaction.raw_value in {"a", "r"}:
-            # Set intensity only after a direction is already typed
             self.reaction.set_value(self.reaction.raw_value + event.key)
         elif event.key == "backspace":
             self.reaction.set_value("")
@@ -180,6 +277,7 @@ class GameScreen(Screen[None]):
             result.state.security,
             str(result.info.get("security_label", "")),
         )
+        self._update_mood_class()
         self.options.set_options(result.state.options)
         self.reaction.set_value("")
         self._processing = False
@@ -210,14 +308,14 @@ class GameScreen(Screen[None]):
         self._spinner_frame = (self._spinner_frame + 1) % 4
         dots = "." * self._spinner_frame
         self._spinner_text = f"Thinking{dots}"
-        self._status.update(self._spinner_text)
+        self._status.update(f"[dim]{self._spinner_text}[/dim]")
         self._render_dialogue()
 
     def _render_dialogue(self) -> None:
         text = self._dialogue_text
         if self._processing:
             suffix = self._spinner_text or "Thinking"
-            text = f"{text}\n\n{suffix}".strip()
+            text = f"{text}\n\n[dim]{suffix}[/dim]".strip()
         self.dialogue.update(text)
 
 
@@ -237,7 +335,7 @@ class PostGameScreen(Screen[None]):
                     StatusBar("SECURITY", state.security).render_text(),
                     f"Turns played: {len(self.engine.trajectory)}",
                     _best_turn_text(self.engine),
-                    "Play again? [y/n]",
+                    "[dim]Play again? [y/n][/dim]",
                 ]
             )
         )
@@ -251,7 +349,7 @@ class PostGameScreen(Screen[None]):
 
 class QuitConfirmScreen(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
-        yield Static("Quit game? [y/n]")
+        yield Static("[dim]Quit game? [y/n][/dim]")
 
     async def on_key(self, event) -> None:
         if event.key == "y":

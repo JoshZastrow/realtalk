@@ -13,7 +13,114 @@ from realtalk.tui.screens import QuitConfirmScreen, SceneScreen
 
 
 class RealTalkApp(App[None]):
-    CSS = ""
+    CSS = """
+/* ── Palette ────────────────────────────────────────────────────── */
+
+App {
+    background: #f5f0e8;
+}
+
+Screen {
+    background: #f5f0e8;
+    color: #2a1f15;
+}
+
+/* ── Menu screens ─────────────────────────────────────────────── */
+
+MenuList {
+    background: #f5f0e8;
+    color: #2a1f15;
+    padding: 2 3;
+    height: 1fr;
+}
+
+/* ── Scene header ─────────────────────────────────────────────── */
+
+SceneHeader {
+    background: #f5f0e8;
+    color: #8a7a65;
+    padding: 1 3 0 3;
+    text-align: center;
+}
+
+/* ── Title bar ────────────────────────────────────────────────── */
+
+#title-bar {
+    background: #f5f0e8;
+    color: #8a7a65;
+    height: 1;
+    padding: 0 2;
+}
+
+#title-right {
+    dock: right;
+    background: #f5f0e8;
+    color: #8a7a65;
+}
+
+/* ── Dialogue zone ────────────────────────────────────────────── */
+
+DialogueArea {
+    background: #f5f0e8;
+    color: #2a1f15;
+    padding: 2 3;
+    height: 1fr;
+}
+
+/* ── Separator ────────────────────────────────────────────────── */
+
+.separator {
+    background: #ede8de;
+    color: #c8c0b0;
+    height: 1;
+}
+
+/* ── Action zone ─────────────────────────────────────────────── */
+
+StatusBar {
+    background: #ede8de;
+    color: #8a7a65;
+    height: 1;
+    padding: 0 2;
+}
+
+ReactionInput {
+    background: #ede8de;
+    color: #2a1f15;
+    height: 2;
+    padding: 0 2;
+}
+
+OptionPicker {
+    background: #ede8de;
+    color: #2a1f15;
+    padding: 0 2 1 2;
+}
+
+/* ── Post-game and quit screens ──────────────────────────────── */
+
+PostGameScreen Static {
+    background: #f5f0e8;
+    color: #2a1f15;
+    padding: 2 3;
+}
+
+QuitConfirmScreen Static {
+    background: #f5f0e8;
+    color: #2a1f15;
+    padding: 2 3;
+}
+
+/* Status line at bottom of game ─────────────────────────────── */
+
+#game-status {
+    background: #ede8de;
+    color: #8a7a65;
+    height: 1;
+    padding: 0 2;
+}
+"""
+
     BINDINGS = [("ctrl+c", "request_quit", "Quit")]
 
     def __init__(

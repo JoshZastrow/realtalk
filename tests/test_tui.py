@@ -74,8 +74,11 @@ def test_ctrl_c_opens_quit_confirmation(tmp_path) -> None:
 
 def test_status_bar_shows_mood_and_security() -> None:
     widget = StatusBar(label="MOOD", value=74, max_value=100, delta_label="+a2", color="green")
-    assert "74" in widget.render_text()
-    assert "+a2" in widget.render_text()
+    text = widget.render_text()
+    assert "74" in text
+    # New design shows emotional label (Warm/Strained/Fragile) instead of delta_label
+    assert "Warm" in text  # 74 >= 65 → Warm
+    assert "█" in text  # block-character bar present
 
 
 def test_reaction_input_accepts_valid() -> None:
