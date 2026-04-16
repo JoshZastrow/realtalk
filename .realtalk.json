@@ -1,6 +1,6 @@
 {
   "game": {
-    "model": "claude-haiku-4-5-20251001",
+    "model": "anthropic/claude-haiku-4-5-20251001",
     "min_turns_to_win": 8,
     "turn_hard_cap": 25,
     "arc_trigger_threshold": 80,
