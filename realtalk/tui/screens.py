@@ -99,9 +99,13 @@ class SituationScreen(Screen[None]):
     def _tick_spinner(self) -> None:
         if self._ready:
             return
-        self._spinner_frame = (self._spinner_frame + 1) % 4
-        dots = "." * self._spinner_frame
-        self._body.update(f"Generating opening{dots}")
+        frames = ["|", "/", "-", "\\"]
+        self._spinner_frame = (self._spinner_frame + 1) % len(frames)
+        spin = frames[self._spinner_frame]
+        self._body.update(
+            f"{spin} Generating opening scene...\n\n"
+            "(This may take up to a minute while the character prepares their opening)"
+        )
 
 
 class GameScreen(Screen[None]):
@@ -115,6 +119,7 @@ class GameScreen(Screen[None]):
         self._spinner_frame = 0
         self._spinner_timer = None
         self._dialogue_text = ""
+        self._spinner_text = ""
         self._status = Static("")
         state = self.engine.current_state()
         self.mood = StatusBar("MOOD", state.mood, delta_label="")
@@ -125,9 +130,12 @@ class GameScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield self.dialogue
+        yield Static("")
         yield self.mood
         yield self.security
+        yield Static("")
         yield self.reaction
+        yield Static("")
         yield self.options
         yield self._status
 
@@ -136,6 +144,7 @@ class GameScreen(Screen[None]):
             return
         if event.key in {"1", "2", "3"} and self.reaction.is_valid:
             self._processing = True
+            self._spinner_text = ""
             self._status.update("Thinking")
             self._spinner_timer = self.set_interval(0.25, self._tick_spinner)
             action = Action(
@@ -144,9 +153,14 @@ class GameScreen(Screen[None]):
                 int(event.key) - 1,
             )
             asyncio.create_task(self._run_step(action))
-        elif event.key in {"a", "r", "A", "R", "1", "2", "3"}:
-            raw = self.reaction.raw_value + event.key
-            self.reaction.set_value(raw)
+        elif event.key in {"a", "r", "A", "R"}:
+            # Start or restart reaction with a direction key
+            self.reaction.set_value(event.key.lower())
+        elif event.key in {"1", "2", "3"} and self.reaction.raw_value in {"a", "r"}:
+            # Set intensity only after a direction is already typed
+            self.reaction.set_value(self.reaction.raw_value + event.key)
+        elif event.key == "backspace":
+            self.reaction.set_value("")
 
     async def _run_step(self, action: Action) -> None:
         old_mood = self.mood.value
@@ -195,13 +209,14 @@ class GameScreen(Screen[None]):
             return
         self._spinner_frame = (self._spinner_frame + 1) % 4
         dots = "." * self._spinner_frame
-        self._status.update(f"Thinking{dots}")
+        self._spinner_text = f"Thinking{dots}"
+        self._status.update(self._spinner_text)
         self._render_dialogue()
 
     def _render_dialogue(self) -> None:
         text = self._dialogue_text
         if self._processing:
-            suffix = self._status.renderable if self._status.renderable else "Thinking"
+            suffix = self._spinner_text or "Thinking"
             text = f"{text}\n\n{suffix}".strip()
         self.dialogue.update(text)
 
