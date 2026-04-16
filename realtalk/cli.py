@@ -34,6 +34,12 @@ def entrypoint() -> None:
     if "--no-color" in sys.argv:
         os.environ["NO_COLOR"] = "1"
 
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+    except ImportError:
+        pass
+
     config = ConfigLoader(cwd=Path.cwd()).load()
     if not _ensure_api_key(config):
         return
