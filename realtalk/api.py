@@ -225,25 +225,29 @@ class LiteLLMClient:
                 "litellm is required. Install with: pip install 'litellm>=1.50'"
             )
 
-        system_prompt = (
-            "\n".join(request.system_prompt) if request.system_prompt else ""
-        )
-        messages = request.messages.copy()
+        # Build OpenAI-format messages (litellm's common format)
+        messages: list[dict] = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": "\n".join(request.system_prompt)})
+        messages.extend(_to_openai_messages(request.messages))
+
+        tools = _to_openai_tools(request.tools) if request.tools else None
 
         try:
             response = None
             for attempt in range(self.max_retries + 1):
                 try:
-                    response = litellm.completion(
+                    kwargs: dict = dict(
                         model=self.model,
                         messages=messages,
-                        system=system_prompt if system_prompt else None,
-                        tools=request.tools if request.tools else None,
+                        tools=tools,
                         stream=True,
                         temperature=self.temperature,
                         max_tokens=self.max_tokens,
-                        api_key=self.api_key,
                     )
+                    if self.api_key is not None:
+                        kwargs["api_key"] = self.api_key
+                    response = litellm.completion(**kwargs)
                     break
                 except Exception as exc:
                     if not _is_retryable_error(exc) or attempt >= self.max_retries:
@@ -343,6 +347,85 @@ class LiteLLMClient:
                 raise RuntimeError(
                     f"Failed to stream from {self.model}: {error_msg}"
                 ) from e
+
+
+def _to_openai_messages(messages: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Convert Anthropic-format messages to OpenAI format for litellm.
+
+    Anthropic uses content blocks (tool_use/tool_result) in assistant/user messages.
+    OpenAI uses tool_calls on assistant messages and role="tool" for results.
+    """
+    import json as _json
+
+    result: list[dict[str, object]] = []
+    for msg in messages:
+        role = msg["role"]
+        content = msg["content"]
+
+        if isinstance(content, str):
+            result.append({"role": role, "content": content})
+            continue
+
+        blocks: list[dict] = list(content)  # type: ignore[arg-type]
+
+        if role == "assistant":
+            text = " ".join(b["text"] for b in blocks if b.get("type") == "text" and b.get("text"))
+            tool_calls = [
+                {
+                    "id": b["id"],
+                    "type": "function",
+                    "function": {
+                        "name": b["name"],
+                        "arguments": _json.dumps(b["input"]) if isinstance(b.get("input"), dict) else str(b.get("input", "{}")),
+                    },
+                }
+                for b in blocks if b.get("type") == "tool_use"
+            ]
+            new_msg: dict[str, object] = {"role": "assistant", "content": text}
+            if tool_calls:
+                new_msg["tool_calls"] = tool_calls
+            result.append(new_msg)
+
+        elif role == "user":
+            tool_results = [b for b in blocks if b.get("type") == "tool_result"]
+            text_blocks = [b for b in blocks if b.get("type") == "text"]
+
+            if text_blocks:
+                text = " ".join(b.get("text", "") for b in text_blocks)  # type: ignore[union-attr]
+                result.append({"role": "user", "content": text})
+
+            for tr in tool_results:
+                result.append({
+                    "role": "tool",
+                    "tool_call_id": tr["tool_use_id"],
+                    "content": tr.get("content", ""),
+                })
+        else:
+            result.append({"role": role, "content": content})
+
+    return result
+
+
+def _to_openai_tools(tools: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Convert Anthropic tool definitions to OpenAI format for litellm.
+
+    Anthropic: {"name": ..., "description": ..., "input_schema": {...}}
+    OpenAI:    {"type": "function", "function": {"name": ..., "description": ..., "parameters": {...}}}
+    """
+    result = []
+    for t in tools:
+        if "input_schema" in t:
+            result.append({
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t["input_schema"],
+                },
+            })
+        else:
+            result.append(t)
+    return result
 
 
 def _is_retryable_error(error: Exception) -> bool:
