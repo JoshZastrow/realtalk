@@ -10,7 +10,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Label, Static
 
 from realtalk.engine import Action, GameEngine
-from realtalk.tui.widgets import DialogueArea, MenuList, OptionPicker, ReactionInput, StatusBar
+from realtalk.tui.widgets import DialogueArea, MenuList, OptionPicker, ReactionInput, StatusBar, block_bar
 
 # ── ASCII scene headers ────────────────────────────────────────────────────────
 
@@ -172,12 +172,13 @@ class SituationScreen(Screen[None]):
     def _tick_spinner(self) -> None:
         if self._ready:
             return
-        frames = ["|", "/", "-", "\\"]
-        self._spinner_frame = (self._spinner_frame + 1) % len(frames)
-        spin = frames[self._spinner_frame]
+        self._spinner_frame += 1
+        # Advance quickly to ~90% then hold — never completes until API returns
+        progress = int(min(90, self._spinner_frame * 1.5))
+        bar = block_bar(progress, width=20)
         self._body.update(
-            f"[dim]{spin} Generating opening scene...[/dim]\n\n"
-            "[dim](This may take up to a minute while the character prepares their opening)[/dim]"
+            f"[dim]setting the scene...[/dim]\n\n"
+            f"[dim #8a7a65]{bar}[/dim #8a7a65]"
         )
 
 
