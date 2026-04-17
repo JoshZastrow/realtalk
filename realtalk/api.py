@@ -228,10 +228,17 @@ class LiteLLMClient:
         # Build OpenAI-format messages (litellm's common format)
         messages: list[dict] = []
         if request.system_prompt:
-            messages.append({"role": "system", "content": "\n".join(request.system_prompt)})
+            messages.append({
+                "role": "system",
+                "content": _build_system_content(request.system_prompt, self.model),
+            })
         messages.extend(_to_openai_messages(request.messages))
 
         tools = _to_openai_tools(request.tools) if request.tools else None
+        if tools and _supports_cache_control(self.model):
+            # Mark the last tool to cache the whole tools block (Anthropic
+            # caches the contiguous prefix up to and including this marker).
+            tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
 
         try:
             response = None
@@ -426,6 +433,53 @@ def _to_openai_tools(tools: list[dict[str, object]]) -> list[dict[str, object]]:
         else:
             result.append(t)
     return result
+
+
+# Sentinel string emitted by realtalk.prompt.SystemPromptBuilder between the
+# static rules/memory prefix and the dynamic per-turn context. Matched as a
+# literal to avoid a Layer 3 → Layer 5 import.
+_DYNAMIC_BOUNDARY = "SYSTEM_PROMPT_DYNAMIC_BOUNDARY"
+
+
+def _supports_cache_control(model: str) -> bool:
+    """Only Anthropic models honor cache_control via litellm."""
+    m = model.lower()
+    return "claude" in m or "anthropic" in m
+
+
+def _build_system_content(
+    sections: list[str], model: str
+) -> str | list[dict[str, object]]:
+    """Build the system message content.
+
+    For Anthropic models, split `sections` at the dynamic boundary and mark
+    the static prefix with ``cache_control: ephemeral``. Everything after the
+    boundary (scene, role, game state) goes in an un-cached part so turn-level
+    churn doesn't invalidate the cached prefix.
+
+    For non-Anthropic models, return a plain string (litellm format-compat).
+    """
+    if not _supports_cache_control(model):
+        return "\n".join(sections)
+
+    if _DYNAMIC_BOUNDARY in sections:
+        idx = sections.index(_DYNAMIC_BOUNDARY)
+        static = sections[:idx]
+        dynamic = sections[idx + 1 :]
+    else:
+        static = sections
+        dynamic = []
+
+    parts: list[dict[str, object]] = []
+    if any(s.strip() for s in static):
+        parts.append({
+            "type": "text",
+            "text": "\n".join(static),
+            "cache_control": {"type": "ephemeral"},
+        })
+    if any(s.strip() for s in dynamic):
+        parts.append({"type": "text", "text": "\n".join(dynamic)})
+    return parts if parts else ""
 
 
 def _is_retryable_error(error: Exception) -> bool:
