@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (git-ignored) and fill in real values.
+gcp_project_id      = "your-gcp-project-id"
+gcp_region          = "us-central1"
+allowed_origins     = ["https://conle.ai"]
+max_sessions        = 10
+rate_limit_per_hour = 5
+
+# Leave blank until DNS is ready.
+api_custom_domain = "" # e.g. "api.realtalk.conle.ai"
+ws_custom_domain  = "" # e.g. "ws.realtalk.conle.ai"
+
+# image_tag is overridden by the deploy script (git short SHA); keep "latest"
+# for manual runs.
+image_tag = "latest"

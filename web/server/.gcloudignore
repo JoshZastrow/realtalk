@@ -1,0 +1,23 @@
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+tests/
+tests_integration/
+*.bak
+.git/
+# realtalk-src is staged by scripts/deploy.sh via rsync with its own
+# excludes; we still want it uploaded to Cloud Build.
+!realtalk-src/
+realtalk-src/.venv/
+realtalk-src/.git/
+realtalk-src/__pycache__/
+realtalk-src/**/__pycache__/
+realtalk-src/**/*.pyc
+realtalk-src/**/.pytest_cache/
+realtalk-src/**/.mypy_cache/
+realtalk-src/**/.ruff_cache/
+realtalk-src/docs/
+realtalk-src/web/
